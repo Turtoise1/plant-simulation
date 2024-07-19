@@ -1,3 +1,10 @@
+use model::entity::Entity;
+
+mod model;
+
 fn main() {
-    println!("Hello, world!");
+    for _ in 0..10 {
+        let c = model::cell::base::Cell::new();
+        c.update();
+    }
 }
