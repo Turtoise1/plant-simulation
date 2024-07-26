@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use wgpu::{
-    Adapter, Backends, Device, Instance, InstanceDescriptor, InstanceFlags, MemoryHints, Queue,
-    RenderPipeline, Surface, TextureFormat,
+    util::DeviceExt, Adapter, Backends, Device, Instance, InstanceDescriptor, InstanceFlags,
+    MemoryHints, Queue, RenderPipeline, Surface, TextureFormat,
 };
 use winit::window::Window;
+
+use super::vertex::{Vertex, INDICES, VERTICES};
 
 pub struct ApplicationState<'window> {
     window: Arc<Window>,
@@ -86,8 +88,26 @@ impl<'window> ApplicationState<'window> {
                 timestamp_writes: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline.as_ref().unwrap()); // 2.
-            render_pass.draw(0..3, 0..1); // 3.
+            let vertex_buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(VERTICES),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+            let num_vertices = VERTICES.len() as u32;
+            let index_buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Index Buffer"),
+                    contents: bytemuck::cast_slice(INDICES),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+            let num_indices = INDICES.len() as u32;
+            render_pass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..num_indices, 0, 0..1);
         }
 
         // submit will accept anything that implements IntoIter
@@ -131,7 +151,7 @@ impl<'window> ApplicationState<'window> {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: "vs_main", // vertex function name entry point from shader.wgsl
-                    buffers: &[],
+                    buffers: &[Vertex::desc()],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
