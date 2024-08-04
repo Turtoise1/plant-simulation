@@ -1,12 +1,16 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use wgpu::{
-    util::DeviceExt, Adapter, Backends, Device, Instance, InstanceDescriptor, InstanceFlags,
-    MemoryHints, Queue, RenderPipeline, Surface, TextureFormat,
+    util::DeviceExt, Adapter, Backends, Buffer, Device, Instance, InstanceDescriptor,
+    InstanceFlags, MemoryHints, Queue, RenderPipeline, Surface, TextureFormat,
 };
 use winit::window::Window;
 
-use super::vertex::{Vertex, INDICES, VERTICES};
+use super::{
+    camera::{Camera, CameraController, CameraUniform},
+    cell::CellRenderer,
+    vertex::Vertex,
+};
 
 pub struct ApplicationState<'window> {
     window: Arc<Window>,
@@ -15,10 +19,21 @@ pub struct ApplicationState<'window> {
     device: Device,
     queue: Queue,
     render_pipeline: Option<RenderPipeline>,
+    cells: Arc<Mutex<Vec<CellRenderer>>>,
+    camera: Camera,
+    camera_controller: Arc<Mutex<CameraController>>,
+    camera_uniform: CameraUniform,
+    camera_buffer: Buffer,
+    camera_bind_group: wgpu::BindGroup,
+    camera_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl<'window> ApplicationState<'window> {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(
+        window: Arc<Window>,
+        cells: Arc<Mutex<Vec<CellRenderer>>>,
+        camera_controller: Arc<Mutex<CameraController>>,
+    ) -> Self {
         let instance = create_instance();
         let surface = instance
             .create_surface(Arc::clone(&window))
@@ -43,6 +58,53 @@ impl<'window> ApplicationState<'window> {
             )
             .await
             .unwrap();
+
+        let size = window.as_ref().inner_size();
+        let camera = Camera {
+            // position the camera 1 unit up and 2 units back
+            // +z is out of the screen
+            eye: (0.0, 1.0, 2.0).into(),
+            // have it look at the origin
+            target: (0.0, 0.0, 0.0).into(),
+            // which way is "up"
+            up: cgmath::Vector3::unit_y(),
+            aspect: size.width as f32 / size.height as f32,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera);
+
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
+        });
+
         let mut state = ApplicationState {
             window,
             adapter,
@@ -50,6 +112,13 @@ impl<'window> ApplicationState<'window> {
             device,
             queue,
             render_pipeline: None,
+            cells,
+            camera,
+            camera_controller,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+            camera_bind_group_layout,
         };
         let render_pipeline = state.get_render_pipeline();
         state.render_pipeline = Some(render_pipeline);
@@ -87,23 +156,26 @@ impl<'window> ApplicationState<'window> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-
+            let cells = self.cells.lock().unwrap();
+            let vertices = &cells[0].vertices;
+            let indices = &cells[0].indices;
             let vertex_buffer = self
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(VERTICES),
+                    contents: bytemuck::cast_slice(vertices),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
-            let num_vertices = VERTICES.len() as u32;
+            let num_vertices = vertices.len() as u32;
             let index_buffer = self
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("Index Buffer"),
-                    contents: bytemuck::cast_slice(INDICES),
+                    contents: bytemuck::cast_slice(indices),
                     usage: wgpu::BufferUsages::INDEX,
                 });
-            let num_indices = INDICES.len() as u32;
+            let num_indices = indices.len() as u32;
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
             render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
             render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
@@ -117,12 +189,40 @@ impl<'window> ApplicationState<'window> {
         Ok(())
     }
 
-    pub fn resize(&self) {
+    pub fn resize(&mut self) {
         let size = self.window.as_ref().inner_size();
         let config =
             Surface::get_default_config(&self.surface, &self.adapter, size.width, size.height)
                 .expect("Could not get default configuration for the surface.");
         self.surface.configure(&self.device, &config);
+        let camera = Camera {
+            // position the camera 1 unit up and 2 units back
+            // +z is out of the screen
+            eye: (0.0, 1.0, 2.0).into(),
+            // have it look at the origin
+            target: (0.0, 0.0, 0.0).into(),
+            // which way is "up"
+            up: cgmath::Vector3::unit_y(),
+            aspect: size.width as f32 / size.height as f32,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+        self.camera = camera;
+    }
+
+    pub fn update_camera(&mut self) {
+        self.camera_controller
+            .lock()
+            .as_ref()
+            .unwrap()
+            .update_camera(&mut self.camera);
+        self.camera_uniform.update_view_proj(&self.camera);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 
     fn get_render_pipeline(&self) -> RenderPipeline {
@@ -134,12 +234,11 @@ impl<'window> ApplicationState<'window> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             });
 
-        // Define the pipeline layout and render pipeline
         let render_pipeline_layout =
             self.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[],
+                    bind_group_layouts: &[&self.camera_bind_group_layout],
                     push_constant_ranges: &[],
                 });
 
