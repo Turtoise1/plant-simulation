@@ -1,6 +1,7 @@
 use std::{
-    borrow::BorrowMut,
+    f32::consts::PI,
     sync::{Arc, Mutex},
+    thread,
 };
 
 use camera::CameraController;
@@ -12,29 +13,36 @@ use winit::{
     window::Window,
 };
 
+use crate::model::{cell::Cell, entity::Entity};
+
 mod camera;
 pub mod cell;
 mod state;
 mod vertex;
 
 pub struct Simulation<'w> {
-    cells: Arc<Mutex<Vec<CellRenderer>>>,
+    cells: Vec<Cell>,
+    cell_renderers: Vec<CellRenderer>,
     window: Option<Arc<Window>>,
     camera_controller: Arc<Mutex<CameraController>>,
     state: Option<ApplicationState<'w>>,
 }
 
 impl<'w> Simulation<'w> {
-    pub fn new() -> Self {
+    pub fn new(cells: Vec<Cell>, level_of_detail: u16) -> Self {
+        let mut cell_renderers = Vec::new();
+        for cell in cells.iter() {
+            // r = ((3V)/(4PI))^(1/3)
+            let radius = f32::powf((3. * cell.volume()) / (4. * PI), 1. / 3.);
+            cell_renderers.push(CellRenderer::new(radius, cell.position(), level_of_detail));
+        }
         let simulation = Simulation {
-            cells: Arc::new(Mutex::new(Vec::new())),
+            cells,
+            cell_renderers,
             window: None,
             state: None,
             camera_controller: Arc::new(Mutex::new(CameraController::new(0.2))),
         };
-        let clone = simulation.cells.clone();
-        let mut cells = clone.lock().unwrap();
-        cells.push(CellRenderer::new(1., [0., 0., 0.], 10));
         simulation
     }
 
@@ -43,16 +51,22 @@ impl<'w> Simulation<'w> {
         //let vertex_buffer = state.get_vertex_buffer();
         //state.draw(&render_pipeline, &vertex_buffer);
     }
+
+    fn update(&mut self, state: &ApplicationState<'w>) {
+        for cell in self.cells.iter_mut() {
+            cell.update();
+        }
+        self.render(state);
+    }
 }
 
 impl<'w> ApplicationHandler for Simulation<'w> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = Arc::new(init_window(event_loop));
         self.window = Some(window.clone());
-        let clone = self.cells.clone();
         let state = block_on(ApplicationState::new(
             window,
-            clone,
+            self.cell_renderers.clone(),
             self.camera_controller.clone(),
         ));
         self.state = Some(state);

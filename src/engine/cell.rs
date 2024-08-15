@@ -1,6 +1,7 @@
 use super::vertex::Vertex;
 use std::f32::consts::PI;
 
+#[derive(Clone)]
 pub struct CellRenderer {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,

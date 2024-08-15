@@ -1,4 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    env::consts::FAMILY,
+    sync::{Arc, Mutex},
+    thread,
+};
 
 use wgpu::{
     util::DeviceExt, Adapter, Backends, Buffer, Device, Instance, InstanceDescriptor,
@@ -19,7 +23,7 @@ pub struct ApplicationState<'window> {
     device: Device,
     queue: Queue,
     render_pipeline: Option<RenderPipeline>,
-    cells: Arc<Mutex<Vec<CellRenderer>>>,
+    cells: Vec<CellRenderer>,
     camera: Camera,
     camera_controller: Arc<Mutex<CameraController>>,
     camera_uniform: CameraUniform,
@@ -31,7 +35,7 @@ pub struct ApplicationState<'window> {
 impl<'window> ApplicationState<'window> {
     pub async fn new(
         window: Arc<Window>,
-        cells: Arc<Mutex<Vec<CellRenderer>>>,
+        cells: Vec<CellRenderer>,
         camera_controller: Arc<Mutex<CameraController>>,
     ) -> Self {
         let instance = create_instance();
@@ -131,24 +135,49 @@ impl<'window> ApplicationState<'window> {
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        // optionally splitting into parts, maybe useful for multithreading i don't know
+        // let parts = split_into_parts(&self.cells, 8);
+        let parts = &[&self.cells]; // instead only one part at the moment
+
+        let mut encoders = Vec::new();
+        for (index, cells) in parts.iter().enumerate() {
+            encoders.push(self.encode_cells(&view, cells, index == 0).finish());
+        }
+        self.queue.submit(encoders.into_iter());
+
+        output.present();
+
+        Ok(())
+    }
+
+    fn encode_cells(
+        &self,
+        view: &wgpu::TextureView,
+        cells: &[CellRenderer],
+        first: bool,
+    ) -> wgpu::CommandEncoder {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
         {
+            let load_operation = match first {
+                true => wgpu::LoadOp::Clear(wgpu::Color {
+                    r: 0.1,
+                    g: 0.2,
+                    b: 0.3,
+                    a: 1.0,
+                }),
+                false => wgpu::LoadOp::Load,
+            };
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
+                        load: load_operation,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -156,37 +185,32 @@ impl<'window> ApplicationState<'window> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            let cells = self.cells.lock().unwrap();
-            let vertices = &cells[0].vertices;
-            let indices = &cells[0].indices;
-            let vertex_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-            let num_vertices = vertices.len() as u32;
-            let index_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Index Buffer"),
-                    contents: bytemuck::cast_slice(indices),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
-            let num_indices = indices.len() as u32;
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..num_indices, 0, 0..1);
-        }
-
-        // submit will accept anything that implements IntoIter
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-
-        Ok(())
+            for cell in cells.iter() {
+                let vertices = &cell.vertices;
+                let indices = &cell.indices;
+                let vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                let index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        });
+                let num_indices = indices.len() as u32;
+                render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                render_pass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.draw_indexed(0..num_indices, 0, 0..1);
+            }
+        };
+        encoder
     }
 
     pub fn resize(&mut self) {
@@ -258,7 +282,18 @@ impl<'window> ApplicationState<'window> {
                     entry_point: "fs_main", // fragment function name entry point from shader.wgsl
                     targets: &[Some(wgpu::ColorTargetState {
                         format: TextureFormat::Bgra8UnormSrgb,
-                        blend: Some(wgpu::BlendState::REPLACE),
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::SrcAlpha,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::One,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                        }),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -288,4 +323,21 @@ fn create_instance() -> Instance {
         gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
     };
     Instance::new(instance_descriptor)
+}
+
+fn split_into_parts<T>(array: &[T], num_parts: usize) -> Vec<&[T]> {
+    let len = array.len();
+    let mut parts = Vec::new();
+    let mut start = 0;
+
+    for i in 0..num_parts {
+        // Calculate the size of each part.
+        // Distribute any remainder to the first few parts.
+        let part_size = (len + i) / num_parts;
+        let end = start + part_size;
+        parts.push(&array[start..end]);
+        start = end;
+    }
+
+    parts
 }

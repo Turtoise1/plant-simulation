@@ -1,18 +1,15 @@
 use engine::Simulation;
 use model::cell::Cell;
-use model::entity::Entity;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod engine;
 mod model;
 
 fn main() {
-    for _ in 0..10 {
-        let c = Cell::new();
-        c.update();
-    }
+    let c = Cell::new([0., 0., 0.], 10.);
+    let cells = vec![c];
 
-    let mut simulation = Simulation::new();
+    let mut simulation = Simulation::new(cells, 4);
 
     let event_loop = EventLoop::new().expect("Event loop creation for winit failed.");
 
