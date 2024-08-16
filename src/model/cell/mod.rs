@@ -1,5 +1,6 @@
 use crate::model::entity::{generate_id, Entity};
 
+#[derive(Clone)]
 pub struct Cell {
     id: u64,
     position: [f32; 3],
@@ -30,6 +31,6 @@ impl Entity for Cell {
     }
     fn update(&mut self) {
         self.volume = self.volume() * 1.001;
-        println!("Cell with entity id {}", self.get_entity_id())
+        //println!("Cell {} has volume {}", self.get_entity_id(), self.volume());
     }
 }

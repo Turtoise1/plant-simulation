@@ -1,3 +1,5 @@
+use std::{thread, time::Duration};
+
 use engine::Simulation;
 use model::cell::Cell;
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -5,13 +7,26 @@ use winit::event_loop::{ControlFlow, EventLoop};
 mod engine;
 mod model;
 
+enum SimulationEvent {
+    Update,
+}
+
 fn main() {
     let c = Cell::new([0., 0., 0.], 10.);
     let cells = vec![c];
 
-    let mut simulation = Simulation::new(cells, 4);
+    let mut simulation = Simulation::new(cells);
 
-    let event_loop = EventLoop::new().expect("Event loop creation for winit failed.");
+    let event_loop = EventLoop::with_user_event()
+        .build()
+        .expect("Event loop creation for winit failed.");
+
+    let proxy = event_loop.create_proxy();
+
+    thread::spawn(move || loop {
+        let _ = proxy.send_event(SimulationEvent::Update);
+        thread::sleep(Duration::from_millis(200));
+    });
 
     // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
     // dispatched any events. This is ideal for games and similar applications.

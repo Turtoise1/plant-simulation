@@ -1,11 +1,7 @@
-use std::{
-    f32::consts::PI,
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::sync::{Arc, Mutex};
 
 use camera::CameraController;
-use cell::CellRenderer;
+use cell::{CellRenderer, Size};
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
@@ -13,32 +9,38 @@ use winit::{
     window::Window,
 };
 
-use crate::model::{cell::Cell, entity::Entity};
+use crate::{
+    model::{cell::Cell, entity::Entity},
+    SimulationEvent,
+};
 
 mod camera;
 pub mod cell;
 mod state;
 mod vertex;
 
+const LEVEL_OF_DETAIL: u16 = 10;
+
 pub struct Simulation<'w> {
-    cells: Vec<Cell>,
-    cell_renderers: Vec<CellRenderer>,
+    cells: Arc<Mutex<Vec<(Cell, CellRenderer)>>>,
     window: Option<Arc<Window>>,
     camera_controller: Arc<Mutex<CameraController>>,
     state: Option<ApplicationState<'w>>,
 }
 
 impl<'w> Simulation<'w> {
-    pub fn new(cells: Vec<Cell>, level_of_detail: u16) -> Self {
-        let mut cell_renderers = Vec::new();
-        for cell in cells.iter() {
-            // r = ((3V)/(4PI))^(1/3)
-            let radius = f32::powf((3. * cell.volume()) / (4. * PI), 1. / 3.);
-            cell_renderers.push(CellRenderer::new(radius, cell.position(), level_of_detail));
+    pub fn new(cells: Vec<Cell>) -> Self {
+        let mut cells_with_renderers = Vec::new();
+        for cell in cells.into_iter() {
+            let volume = (&cell).volume();
+            let position = (&cell).position();
+            cells_with_renderers.push((
+                cell,
+                CellRenderer::new(Size::FromVolume(volume), position, LEVEL_OF_DETAIL),
+            ));
         }
         let simulation = Simulation {
-            cells,
-            cell_renderers,
+            cells: Arc::new(Mutex::new(cells_with_renderers)),
             window: None,
             state: None,
             camera_controller: Arc::new(Mutex::new(CameraController::new(0.2))),
@@ -48,29 +50,42 @@ impl<'w> Simulation<'w> {
 
     fn render(&self, state: &ApplicationState<'w>) {
         state.render().unwrap();
-        //let vertex_buffer = state.get_vertex_buffer();
-        //state.draw(&render_pipeline, &vertex_buffer);
     }
 
-    fn update(&mut self, state: &ApplicationState<'w>) {
-        for cell in self.cells.iter_mut() {
+    pub fn update(&mut self) {
+        for (cell, cell_renderer) in self.cells.lock().unwrap().iter_mut() {
             cell.update();
+            cell_renderer.update_size(Size::FromVolume(cell.volume()), LEVEL_OF_DETAIL);
         }
-        self.render(state);
+        match &self.state {
+            None => {}
+            Some(state) => {
+                self.render(state);
+            }
+        };
     }
 }
 
-impl<'w> ApplicationHandler for Simulation<'w> {
+impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = Arc::new(init_window(event_loop));
         self.window = Some(window.clone());
+        let cells = Arc::clone(&self.cells);
         let state = block_on(ApplicationState::new(
             window,
-            self.cell_renderers.clone(),
+            cells,
             self.camera_controller.clone(),
         ));
         self.state = Some(state);
         println!("resumed!");
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: SimulationEvent) {
+        match event {
+            SimulationEvent::Update => {
+                self.update();
+            }
+        }
     }
 
     fn window_event(

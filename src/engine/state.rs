@@ -1,14 +1,12 @@
-use std::{
-    env::consts::FAMILY,
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::sync::{Arc, Mutex};
 
 use wgpu::{
     util::DeviceExt, Adapter, Backends, Buffer, Device, Instance, InstanceDescriptor,
     InstanceFlags, MemoryHints, Queue, RenderPipeline, Surface, TextureFormat,
 };
 use winit::window::Window;
+
+use crate::model::cell::Cell;
 
 use super::{
     camera::{Camera, CameraController, CameraUniform},
@@ -23,7 +21,7 @@ pub struct ApplicationState<'window> {
     device: Device,
     queue: Queue,
     render_pipeline: Option<RenderPipeline>,
-    cells: Vec<CellRenderer>,
+    cells: Arc<Mutex<Vec<(Cell, CellRenderer)>>>,
     camera: Camera,
     camera_controller: Arc<Mutex<CameraController>>,
     camera_uniform: CameraUniform,
@@ -35,7 +33,7 @@ pub struct ApplicationState<'window> {
 impl<'window> ApplicationState<'window> {
     pub async fn new(
         window: Arc<Window>,
-        cells: Vec<CellRenderer>,
+        cells: Arc<Mutex<Vec<(Cell, CellRenderer)>>>,
         camera_controller: Arc<Mutex<CameraController>>,
     ) -> Self {
         let instance = create_instance();
@@ -135,9 +133,11 @@ impl<'window> ApplicationState<'window> {
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let cells = self.cells.lock().unwrap();
         // optionally splitting into parts, maybe useful for multithreading i don't know
-        // let parts = split_into_parts(&self.cells, 8);
-        let parts = &[&self.cells]; // instead only one part at the moment
+        // let parts = split_into_parts(&cells, 8);
+        let parts = &[&cells]; // instead only one part at the moment
 
         let mut encoders = Vec::new();
         for (index, cells) in parts.iter().enumerate() {
@@ -153,7 +153,7 @@ impl<'window> ApplicationState<'window> {
     fn encode_cells(
         &self,
         view: &wgpu::TextureView,
-        cells: &[CellRenderer],
+        cells: &[(Cell, CellRenderer)],
         first: bool,
     ) -> wgpu::CommandEncoder {
         let mut encoder = self
@@ -185,9 +185,9 @@ impl<'window> ApplicationState<'window> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            for cell in cells.iter() {
-                let vertices = &cell.vertices;
-                let indices = &cell.indices;
+            for (_, cell_renderer) in cells.iter() {
+                let vertices = &cell_renderer.vertices;
+                let indices = &cell_renderer.indices;
                 let vertex_buffer =
                     self.device
                         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
