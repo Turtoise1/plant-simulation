@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use camera::CameraController;
 use cell::{CellRenderer, Size};
@@ -31,12 +31,22 @@ pub struct Simulation<'w> {
 impl<'w> Simulation<'w> {
     pub fn new(cells: Vec<Cell>) -> Self {
         let mut cells_with_renderers = Vec::new();
+        let cells_clone = cells.clone();
         for cell in cells.into_iter() {
             let volume = (&cell).volume();
             let position = (&cell).position();
             cells_with_renderers.push((
                 cell,
-                CellRenderer::new(Size::FromVolume(volume), position, LEVEL_OF_DETAIL),
+                CellRenderer::new(
+                    Size::FromVolume(volume),
+                    position,
+                    LEVEL_OF_DETAIL,
+                    cells_clone
+                        .iter()
+                        .filter(|other_cell| other_cell.get_entity_id() != cell.get_entity_id())
+                        .map(|c| c.clone())
+                        .collect(),
+                ),
             ));
         }
         let simulation = Simulation {
@@ -53,9 +63,28 @@ impl<'w> Simulation<'w> {
     }
 
     pub fn update(&mut self) {
-        for (cell, cell_renderer) in self.cells.lock().unwrap().iter_mut() {
-            cell.update();
-            cell_renderer.update_size(Size::FromVolume(cell.volume()), LEVEL_OF_DETAIL);
+        {
+            let mut cells = self.cells.lock().unwrap();
+            let cell_refs: Vec<_> = cells.iter().map(|(cell, _)| cell.clone()).collect();
+            for (cell, cell_renderer) in cells.iter_mut() {
+                // Create a filtered Vec of the other cells
+                let other_cells = cell_refs
+                    .iter()
+                    .filter_map(|other_cell| {
+                        if other_cell.get_entity_id() != cell.get_entity_id() {
+                            Some(other_cell.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                cell.update();
+                cell_renderer.update_size(
+                    Size::FromVolume(cell.volume()),
+                    LEVEL_OF_DETAIL,
+                    other_cells,
+                );
+            }
         }
         match &self.state {
             None => {}
@@ -64,6 +93,15 @@ impl<'w> Simulation<'w> {
             }
         };
     }
+}
+
+fn get_other_cells(cells: &MutexGuard<'_, Vec<(Cell, CellRenderer)>>, cell: &Cell) -> Vec<Cell> {
+    let other_cells: Vec<Cell> = cells
+        .iter()
+        .filter(|(other, _)| other.get_entity_id() != cell.get_entity_id())
+        .map(|(other_cell, _)| other_cell.clone()) // Clone the cell here
+        .collect();
+    other_cells
 }
 
 impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
