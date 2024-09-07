@@ -12,7 +12,11 @@ enum SimulationEvent {
 }
 
 fn main() {
-    let cells = vec![Cell::new([-1., 0., 0.], 10.), Cell::new([0., 0., 0.], 1.)];
+    let cells = vec![
+        Cell::new([-1., 0., 0.], 10.),
+        Cell::new([0., 0., 0.], 1.),
+        Cell::new([-1., 0., 2.], 1.),
+    ];
 
     let mut simulation = Simulation::new(cells);
 

@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use camera::CameraController;
-use cell::{CellRenderer, Size};
+use cell_renderer::{CellRenderer, Size};
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
@@ -15,11 +15,11 @@ use crate::{
 };
 
 mod camera;
-pub mod cell;
+pub mod cell_renderer;
 mod state;
 mod vertex;
 
-const LEVEL_OF_DETAIL: u16 = 10;
+const LEVEL_OF_DETAIL: u16 = 30;
 
 pub struct Simulation<'w> {
     cells: Arc<Mutex<Vec<(Cell, CellRenderer)>>>,

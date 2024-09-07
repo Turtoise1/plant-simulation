@@ -10,7 +10,7 @@ use crate::model::cell::Cell;
 
 use super::{
     camera::{Camera, CameraController, CameraUniform},
-    cell::CellRenderer,
+    cell_renderer::CellRenderer,
     vertex::Vertex,
 };
 

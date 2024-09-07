@@ -1,4 +1,7 @@
-use crate::model::cell::{Cell, SIZE_THRESHOLD};
+use crate::model::{
+    cell::{Cell, SIZE_THRESHOLD},
+    entity::Entity,
+};
 
 use super::vertex::Vertex;
 use std::f32::consts::PI;
@@ -95,7 +98,7 @@ impl CellRenderer {
     fn get_rid_of_intersections(&self, vertex: Vertex, near_cells: &Vec<Cell>) -> Vertex {
         let intersections: Vec<&Cell> = near_cells
             .iter()
-            .filter(|cell| in_range(vertex, cell))
+            .filter(|cell| in_range(Point::FromVertex(vertex), cell))
             .collect();
         if intersections.is_empty() {
             vertex
@@ -107,7 +110,7 @@ impl CellRenderer {
                 let middle = midpoint(lower_bound, upper_bound);
                 let intersections: Vec<&&Cell> = intersections
                     .iter()
-                    .filter(|cell| in_range(vertex, cell))
+                    .filter(|cell| in_range(Point::FromF32(middle), cell))
                     .collect();
                 if intersections.is_empty() {
                     lower_bound = middle;
@@ -115,8 +118,11 @@ impl CellRenderer {
                     upper_bound = middle;
                 }
             }
+            // lower_bound is now either the middle of the cell or the first point in this angle where another cell is touched
+            let middle = midpoint(lower_bound, vertex.position);
+            // TODO : simply taking the middle does not work if two cells are nearer together than at least of their radiuses...
             Vertex {
-                position: lower_bound,
+                position: middle,
                 color: vertex.color,
             }
         }
@@ -138,8 +144,8 @@ fn midpoint(point1: [f32; 3], point2: [f32; 3]) -> [f32; 3] {
 
 fn distance(point1: [f32; 3], point2: [f32; 3]) -> f32 {
     f32::sqrt(
-        (0..2)
-            .map(|xyz| f32::powi(point1[xyz] - point2[xyz], 2))
+        (0..3) // includes 0, excludes 3
+            .map(|xyz| f32::powi(point2[xyz] - point1[xyz], 2))
             .sum(),
     )
 }
@@ -148,6 +154,15 @@ fn near(cell: &Cell, position: [f32; 3]) -> bool {
     return distance(cell.position(), position) <= SIZE_THRESHOLD * 2.;
 }
 
-fn in_range(vertex: Vertex, cell: &Cell) -> bool {
-    return distance(cell.position(), vertex.position) <= radius_from_volume(cell.volume());
+enum Point {
+    FromVertex(Vertex),
+    FromF32([f32; 3]),
+}
+fn in_range(point: Point, cell: &Cell) -> bool {
+    let position;
+    match point {
+        Point::FromVertex(vertex) => position = vertex.position,
+        Point::FromF32(pos) => position = pos,
+    }
+    return distance(cell.position(), position) <= radius_from_volume(cell.volume());
 }
