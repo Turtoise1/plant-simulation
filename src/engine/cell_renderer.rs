@@ -1,10 +1,7 @@
-use crate::model::{
-    cell::{Cell, SIZE_THRESHOLD},
-    entity::Entity,
-};
+use crate::model::cell::{Cell, SIZE_THRESHOLD};
 
 use super::vertex::Vertex;
-use std::f32::consts::PI;
+use std::{cell::RefCell, f32::consts::PI, sync::Arc};
 
 #[derive(Clone)]
 pub struct CellRenderer {
@@ -12,6 +9,7 @@ pub struct CellRenderer {
     position: [f32; 3],
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
+    pub cell: Arc<RefCell<&Cell>>,
 }
 
 pub enum Size {
@@ -20,24 +18,34 @@ pub enum Size {
 }
 
 impl CellRenderer {
-    pub fn new(size: Size, position: [f32; 3], lod: u16, other_cells: Vec<Cell>) -> Self {
+    pub fn new(
+        cell: Arc<RefCell<&Cell>>,
+        size: Size,
+        position: [f32; 3],
+        lod: u16,
+        other_cells: Vec<Cell>,
+    ) -> Self {
         let mut cell = CellRenderer {
             radius: 0., // temporary, gets overriden in update
             position,
             vertices: Vec::new(),
             indices: Vec::new(),
+            cell,
         };
 
-        cell.update_size(size, lod, other_cells);
+        cell.update(size, lod, other_cells);
 
         cell
     }
 
-    pub fn update_size(&mut self, new_size: Size, lod: u16, other_cells: Vec<Cell>) {
-        let near_cells: Vec<Cell> = other_cells
+    pub fn update(&mut self, new_size: Size, lod: u16, other_cells: Vec<Cell>) {
+        let mut near_cells: Vec<Cell> = other_cells
             .into_iter()
             .filter(|cell| near(cell, self.position))
             .collect();
+
+        self.reposition(&mut near_cells);
+        let near_cells = near_cells; // does not need to be mutable anymore
 
         self.vertices = Vec::new();
         self.indices = Vec::new();
@@ -93,6 +101,65 @@ impl CellRenderer {
                 self.indices.push(first + 1);
             }
         }
+    }
+
+    // move self and near cells away from each other depending on their volumes
+    // the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts.
+    fn reposition(&mut self, near_cells: &mut Vec<Cell>) {
+        for other_cell in near_cells {
+            let min_dist = f32::max(self.radius, radius_from_volume(other_cell.volume()));
+            if distance(self.position, other_cell.position()) < min_dist {
+                self.push_away(other_cell, min_dist);
+            }
+        }
+    }
+
+    // move self and other_cell away from each other depending on their volume
+    fn push_away(&mut self, other_cell: &mut Cell, to_dist: f32) {
+        let p1 = self.position;
+        let p2 = other_cell.position();
+        let w1 = self.radius;
+        let w2 = radius_from_volume(other_cell.volume());
+        let d_target = to_dist;
+
+        // Step 1: Compute the vector between the points
+        let direction = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]];
+
+        // Step 2: Compute the current distance
+        let length = (direction[0].powi(2) + direction[1].powi(2) + direction[2].powi(2)).sqrt();
+
+        // Normalize the direction vector
+        let direction_normalized = [
+            direction[0] / length,
+            direction[1] / length,
+            direction[2] / length,
+        ];
+
+        // Step 3: Determine how much each position should move based on the weights
+        let w_total = w1 + w2;
+        let factor1 = w2 / w_total; // p1's movement factor
+        let factor2 = w1 / w_total; // p2's movement factor
+
+        // Step 4: Compute the displacement needed to reach the target distance
+        let displacement = d_target - length;
+
+        // Apply the displacement to both cells
+        self.position
+            .iter_mut()
+            .zip(direction_normalized.iter())
+            .for_each(|(p1_comp, &dir_comp)| {
+                *p1_comp -= dir_comp * displacement * factor1;
+            });
+        self.cell.borrow_mut().set_position(self.position);
+
+        let mut position = other_cell.position();
+        position
+            .iter_mut()
+            .zip(direction_normalized.iter())
+            .for_each(|(p2_comp, &dir_comp)| {
+                *p2_comp -= dir_comp * displacement * factor2;
+            });
+        other_cell.set_position(position);
     }
 
     fn get_rid_of_intersections(&self, vertex: Vertex, near_cells: &Vec<Cell>) -> Vertex {

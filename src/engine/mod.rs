@@ -1,4 +1,9 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{
+    borrow::BorrowMut,
+    cell::RefCell,
+    rc::Rc,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use camera::CameraController;
 use cell_renderer::{CellRenderer, Size};
@@ -22,7 +27,7 @@ mod vertex;
 const LEVEL_OF_DETAIL: u16 = 30;
 
 pub struct Simulation<'w> {
-    cells: Arc<Mutex<Vec<(Cell, CellRenderer)>>>,
+    cells: Arc<Mutex<Vec<Cell>>>,
     window: Option<Arc<Window>>,
     camera_controller: Arc<Mutex<CameraController>>,
     state: Option<ApplicationState<'w>>,
@@ -30,27 +35,32 @@ pub struct Simulation<'w> {
 
 impl<'w> Simulation<'w> {
     pub fn new(cells: Vec<Cell>) -> Self {
-        let mut cells_with_renderers = Vec::new();
         let cells_clone = cells.clone();
-        for cell in cells.into_iter() {
-            let volume = (&cell).volume();
-            let position = (&cell).position();
-            cells_with_renderers.push((
-                cell,
-                CellRenderer::new(
+        let cells = cells
+            .into_iter()
+            .map(|mut cell| {
+                let volume = (&cell).volume();
+                let position = (&cell).position();
+                let other_cells = cells_clone
+                    .iter()
+                    .filter(|other_cell| other_cell.get_entity_id() != cell.get_entity_id())
+                    .map(|c| c.clone())
+                    .collect();
+                let renderer = CellRenderer::new(
+                    Arc::new(RefCell::new(&cell)),
                     Size::FromVolume(volume),
                     position,
                     LEVEL_OF_DETAIL,
-                    cells_clone
-                        .iter()
-                        .filter(|other_cell| other_cell.get_entity_id() != cell.get_entity_id())
-                        .map(|c| c.clone())
-                        .collect(),
-                ),
-            ));
-        }
+                    other_cells,
+                );
+                cell.set_renderer(Option::Some(Rc::downgrade(&Rc::new(RefCell::new(
+                    renderer,
+                )))));
+                cell
+            })
+            .collect();
         let simulation = Simulation {
-            cells: Arc::new(Mutex::new(cells_with_renderers)),
+            cells: Arc::new(Mutex::new(cells)),
             window: None,
             state: None,
             camera_controller: Arc::new(Mutex::new(CameraController::new(0.2))),
@@ -65,8 +75,8 @@ impl<'w> Simulation<'w> {
     pub fn update(&mut self) {
         {
             let mut cells = self.cells.lock().unwrap();
-            let cell_refs: Vec<_> = cells.iter().map(|(cell, _)| cell.clone()).collect();
-            for (cell, cell_renderer) in cells.iter_mut() {
+            let cell_refs: Vec<_> = cells.iter().map(|cell| cell.clone()).collect();
+            for cell in cells.iter_mut() {
                 // Create a filtered Vec of the other cells
                 let other_cells = cell_refs
                     .iter()
@@ -79,11 +89,20 @@ impl<'w> Simulation<'w> {
                     })
                     .collect::<Vec<_>>();
                 cell.update();
-                cell_renderer.update_size(
-                    Size::FromVolume(cell.volume()),
-                    LEVEL_OF_DETAIL,
-                    other_cells,
-                );
+                match cell.renderer {
+                    Some(renderer) => {
+                        if let Some(renderer) = renderer.upgrade() {
+                            renderer.into_inner().update(
+                                Size::FromVolume(cell.volume()),
+                                LEVEL_OF_DETAIL,
+                                other_cells,
+                            );
+                        } else {
+                            println!("No renderer present in cell!");
+                        }
+                    }
+                    _ => {}
+                };
             }
         }
         match &self.state {

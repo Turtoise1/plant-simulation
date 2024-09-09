@@ -1,6 +1,9 @@
-use std::f32::consts::E;
+use std::{cell::RefCell, f32::consts::E, rc::Weak};
 
-use crate::model::entity::{generate_id, Entity};
+use crate::{
+    engine::cell_renderer::CellRenderer,
+    model::entity::{generate_id, Entity},
+};
 
 pub const SIZE_THRESHOLD: f32 = 20.;
 
@@ -11,13 +14,14 @@ pub struct GrowthFactors {
     start_value: f32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Cell {
     id: u64,
     time_lived: u32,
     growth_factors: GrowthFactors,
     position: [f32; 3],
     volume: f32,
+    pub renderer: Option<Weak<RefCell<CellRenderer>>>,
 }
 
 impl Cell {
@@ -32,11 +36,16 @@ impl Cell {
             },
             position,
             volume,
+            renderer: Option::None,
         }
     }
 
     pub fn position(&self) -> [f32; 3] {
         self.position
+    }
+
+    pub fn set_position(&mut self, position: [f32; 3]) {
+        self.position = position;
     }
 
     pub fn volume(&self) -> f32 {
