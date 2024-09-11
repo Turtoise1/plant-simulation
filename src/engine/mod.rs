@@ -1,12 +1,7 @@
-use std::{
-    borrow::BorrowMut,
-    cell::RefCell,
-    rc::Rc,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use camera::CameraController;
-use cell_renderer::{CellRenderer, Size};
+use cell_renderer::Size;
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
@@ -27,38 +22,14 @@ mod vertex;
 const LEVEL_OF_DETAIL: u16 = 30;
 
 pub struct Simulation<'w> {
-    cells: Arc<Mutex<Vec<Cell>>>,
+    cells: Arc<Mutex<Vec<Arc<Mutex<Cell>>>>>,
     window: Option<Arc<Window>>,
     camera_controller: Arc<Mutex<CameraController>>,
     state: Option<ApplicationState<'w>>,
 }
 
 impl<'w> Simulation<'w> {
-    pub fn new(cells: Vec<Cell>) -> Self {
-        let cells_clone = cells.clone();
-        let cells = cells
-            .into_iter()
-            .map(|mut cell| {
-                let volume = (&cell).volume();
-                let position = (&cell).position();
-                let other_cells = cells_clone
-                    .iter()
-                    .filter(|other_cell| other_cell.get_entity_id() != cell.get_entity_id())
-                    .map(|c| c.clone())
-                    .collect();
-                let renderer = CellRenderer::new(
-                    Arc::new(RefCell::new(&cell)),
-                    Size::FromVolume(volume),
-                    position,
-                    LEVEL_OF_DETAIL,
-                    other_cells,
-                );
-                cell.set_renderer(Option::Some(Rc::downgrade(&Rc::new(RefCell::new(
-                    renderer,
-                )))));
-                cell
-            })
-            .collect();
+    pub fn new(cells: Vec<Arc<Mutex<Cell>>>) -> Self {
         let simulation = Simulation {
             cells: Arc::new(Mutex::new(cells)),
             window: None,
@@ -74,34 +45,43 @@ impl<'w> Simulation<'w> {
 
     pub fn update(&mut self) {
         {
-            let mut cells = self.cells.lock().unwrap();
-            let cell_refs: Vec<_> = cells.iter().map(|cell| cell.clone()).collect();
-            for cell in cells.iter_mut() {
+            let cell_refs: Vec<_> = self
+                .cells
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|cell| Arc::clone(cell))
+                .collect();
+            for cell in self.cells.lock().unwrap().iter() {
                 // Create a filtered Vec of the other cells
                 let other_cells = cell_refs
                     .iter()
                     .filter_map(|other_cell| {
-                        if other_cell.get_entity_id() != cell.get_entity_id() {
-                            Some(other_cell.clone())
+                        let other_id;
+                        {
+                            other_id = other_cell.lock().unwrap().get_entity_id().clone();
+                        }
+                        if other_id != cell.lock().unwrap().get_entity_id() {
+                            Some(Arc::clone(other_cell))
                         } else {
                             None
                         }
                     })
                     .collect::<Vec<_>>();
+                let mut cell = cell.lock().unwrap();
                 cell.update();
-                match cell.renderer {
+                match &cell.renderer {
                     Some(renderer) => {
-                        if let Some(renderer) = renderer.upgrade() {
-                            renderer.into_inner().update(
-                                Size::FromVolume(cell.volume()),
-                                LEVEL_OF_DETAIL,
-                                other_cells,
-                            );
-                        } else {
-                            println!("No renderer present in cell!");
-                        }
+                        let mut renderer = renderer.lock().unwrap();
+                        renderer.update(
+                            Size::FromVolume(cell.volume()),
+                            LEVEL_OF_DETAIL,
+                            other_cells,
+                        );
                     }
-                    _ => {}
+                    None => {
+                        println!("Renderer not initialized!");
+                    }
                 };
             }
         }
@@ -114,11 +94,11 @@ impl<'w> Simulation<'w> {
     }
 }
 
-fn get_other_cells(cells: &MutexGuard<'_, Vec<(Cell, CellRenderer)>>, cell: &Cell) -> Vec<Cell> {
+fn get_other_cells(cells: &MutexGuard<'_, Vec<Cell>>, cell: &Cell) -> Vec<Cell> {
     let other_cells: Vec<Cell> = cells
         .iter()
-        .filter(|(other, _)| other.get_entity_id() != cell.get_entity_id())
-        .map(|(other_cell, _)| other_cell.clone()) // Clone the cell here
+        .filter(|other_cell| other_cell.get_entity_id() != cell.get_entity_id())
+        .map(|other_cell| other_cell.clone()) // Clone the cell here
         .collect();
     other_cells
 }

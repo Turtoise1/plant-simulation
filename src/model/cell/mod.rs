@@ -1,7 +1,10 @@
-use std::{cell::RefCell, f32::consts::E, rc::Weak};
+use std::{
+    f32::consts::E,
+    sync::{Arc, Mutex, Weak},
+};
 
 use crate::{
-    engine::cell_renderer::CellRenderer,
+    engine::cell_renderer::{radius_from_volume, CellRenderer},
     model::entity::{generate_id, Entity},
 };
 
@@ -21,12 +24,12 @@ pub struct Cell {
     growth_factors: GrowthFactors,
     position: [f32; 3],
     volume: f32,
-    pub renderer: Option<Weak<RefCell<CellRenderer>>>,
+    pub renderer: Option<Arc<Mutex<CellRenderer>>>,
 }
 
 impl Cell {
-    pub fn new(position: [f32; 3], volume: f32) -> Cell {
-        Cell {
+    pub fn new(position: [f32; 3], volume: f32) -> Arc<Mutex<Cell>> {
+        let cell = Cell {
             id: generate_id(),
             time_lived: 0,
             growth_factors: GrowthFactors {
@@ -37,7 +40,12 @@ impl Cell {
             position,
             volume,
             renderer: Option::None,
-        }
+        };
+        let cell_arc = Arc::new(Mutex::new(cell));
+        let renderer = CellRenderer::new(Arc::clone(&cell_arc), position);
+        let renderer = Arc::new(Mutex::new(renderer));
+        cell_arc.lock().unwrap().renderer = Some(renderer);
+        cell_arc
     }
 
     pub fn position(&self) -> [f32; 3] {
@@ -46,6 +54,18 @@ impl Cell {
 
     pub fn set_position(&mut self, position: [f32; 3]) {
         self.position = position;
+        match &self.renderer {
+            Some(renderer) => {
+                let mut renderer = renderer.lock().unwrap();
+                renderer.set_position(position);
+            }
+            None => {
+                println!(
+                    "Renderer of cell {} is not initialized yet!",
+                    self.get_entity_id()
+                )
+            }
+        }
     }
 
     pub fn volume(&self) -> f32 {

@@ -1,7 +1,10 @@
 use crate::model::cell::{Cell, SIZE_THRESHOLD};
 
 use super::vertex::Vertex;
-use std::{cell::RefCell, f32::consts::PI, sync::Arc};
+use std::{
+    f32::consts::PI,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Clone)]
 pub struct CellRenderer {
@@ -9,7 +12,7 @@ pub struct CellRenderer {
     position: [f32; 3],
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
-    pub cell: Arc<RefCell<&Cell>>,
+    pub cell: Arc<Mutex<Cell>>,
 }
 
 pub enum Size {
@@ -18,33 +21,28 @@ pub enum Size {
 }
 
 impl CellRenderer {
-    pub fn new(
-        cell: Arc<RefCell<&Cell>>,
-        size: Size,
-        position: [f32; 3],
-        lod: u16,
-        other_cells: Vec<Cell>,
-    ) -> Self {
-        let mut cell = CellRenderer {
-            radius: 0., // temporary, gets overriden in update
+    pub fn new(cell: Arc<Mutex<Cell>>, position: [f32; 3]) -> Self {
+        let cell = CellRenderer {
+            radius: 0., // temporary, gets overriden in first update
             position,
             vertices: Vec::new(),
             indices: Vec::new(),
             cell,
         };
 
-        cell.update(size, lod, other_cells);
-
         cell
     }
 
-    pub fn update(&mut self, new_size: Size, lod: u16, other_cells: Vec<Cell>) {
-        let mut near_cells: Vec<Cell> = other_cells
+    pub fn set_position(&mut self, new_position: [f32; 3]) {
+        self.position = new_position;
+    }
+
+    pub fn update(&mut self, new_size: Size, lod: u16, other_cells: Vec<Arc<Mutex<Cell>>>) {
+        let near_cells: Vec<Arc<Mutex<Cell>>> = other_cells
             .into_iter()
             .filter(|cell| near(cell, self.position))
             .collect();
-
-        self.reposition(&mut near_cells);
+        self.reposition(&near_cells);
         let near_cells = near_cells; // does not need to be mutable anymore
 
         self.vertices = Vec::new();
@@ -81,7 +79,6 @@ impl CellRenderer {
                 };
 
                 let vertex = self.get_rid_of_intersections(vertex, &near_cells);
-
                 self.vertices.push(vertex);
             }
         }
@@ -105,21 +102,33 @@ impl CellRenderer {
 
     // move self and near cells away from each other depending on their volumes
     // the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts.
-    fn reposition(&mut self, near_cells: &mut Vec<Cell>) {
+    fn reposition(&mut self, near_cells: &Vec<Arc<Mutex<Cell>>>) {
         for other_cell in near_cells {
-            let min_dist = f32::max(self.radius, radius_from_volume(other_cell.volume()));
-            if distance(self.position, other_cell.position()) < min_dist {
+            let min_dist = f32::max(
+                self.radius,
+                radius_from_volume(other_cell.lock().unwrap().volume()),
+            );
+            let other_pos;
+            {
+                other_pos = other_cell.lock().unwrap().position().clone();
+            }
+            if distance(self.position, other_pos) < min_dist {
                 self.push_away(other_cell, min_dist);
             }
         }
     }
 
     // move self and other_cell away from each other depending on their volume
-    fn push_away(&mut self, other_cell: &mut Cell, to_dist: f32) {
+    fn push_away(&mut self, other_cell: &Arc<Mutex<Cell>>, to_dist: f32) {
         let p1 = self.position;
-        let p2 = other_cell.position();
         let w1 = self.radius;
-        let w2 = radius_from_volume(other_cell.volume());
+        let p2;
+        let w2;
+        {
+            let other_cell = other_cell.lock().unwrap();
+            p2 = other_cell.position().clone();
+            w2 = radius_from_volume(other_cell.volume().clone());
+        }
         let d_target = to_dist;
 
         // Step 1: Compute the vector between the points
@@ -144,26 +153,39 @@ impl CellRenderer {
         let displacement = d_target - length;
 
         // Apply the displacement to both cells
-        self.position
-            .iter_mut()
-            .zip(direction_normalized.iter())
-            .for_each(|(p1_comp, &dir_comp)| {
-                *p1_comp -= dir_comp * displacement * factor1;
-            });
-        self.cell.borrow_mut().set_position(self.position);
+        {
+            let mut position = self.position;
+            position
+                .iter_mut()
+                .zip(direction_normalized.iter())
+                .for_each(|(p1_comp, &dir_comp)| {
+                    *p1_comp -= dir_comp * displacement * factor1;
+                });
+            println!("Deadlock nach dieser Zeile!");
+            // TODO: Die Zelle wird schon in src/engine/mods.rs in der Update-Methode gelocked, in der diese Methode aufgerufen wird.
+            // Dementsprechend passiert hier natürlich ein Deadlock.
+            self.cell.lock().unwrap().set_position(position);
+        }
 
-        let mut position = other_cell.position();
-        position
-            .iter_mut()
-            .zip(direction_normalized.iter())
-            .for_each(|(p2_comp, &dir_comp)| {
-                *p2_comp -= dir_comp * displacement * factor2;
-            });
-        other_cell.set_position(position);
+        {
+            let mut other_cell = other_cell.lock().unwrap();
+            let mut position = other_cell.position();
+            position
+                .iter_mut()
+                .zip(direction_normalized.iter())
+                .for_each(|(p2_comp, &dir_comp)| {
+                    *p2_comp -= dir_comp * displacement * factor2;
+                });
+            other_cell.set_position(position);
+        }
     }
 
-    fn get_rid_of_intersections(&self, vertex: Vertex, near_cells: &Vec<Cell>) -> Vertex {
-        let intersections: Vec<&Cell> = near_cells
+    fn get_rid_of_intersections(
+        &self,
+        vertex: Vertex,
+        near_cells: &Vec<Arc<Mutex<Cell>>>,
+    ) -> Vertex {
+        let intersections: Vec<&Arc<Mutex<Cell>>> = near_cells
             .iter()
             .filter(|cell| in_range(Point::FromVertex(vertex), cell))
             .collect();
@@ -175,7 +197,7 @@ impl CellRenderer {
             let mut lower_bound = self.position;
             while distance(upper_bound, lower_bound) > 0.05 {
                 let middle = midpoint(lower_bound, upper_bound);
-                let intersections: Vec<&&Cell> = intersections
+                let intersections: Vec<_> = intersections
                     .iter()
                     .filter(|cell| in_range(Point::FromF32(middle), cell))
                     .collect();
@@ -196,7 +218,7 @@ impl CellRenderer {
     }
 }
 
-fn radius_from_volume(volume: f32) -> f32 {
+pub fn radius_from_volume(volume: f32) -> f32 {
     // r = ((3V)/(4PI))^(1/3)
     f32::powf((3. * volume) / (4. * PI), 1. / 3.)
 }
@@ -217,19 +239,26 @@ fn distance(point1: [f32; 3], point2: [f32; 3]) -> f32 {
     )
 }
 
-fn near(cell: &Cell, position: [f32; 3]) -> bool {
-    return distance(cell.position(), position) <= SIZE_THRESHOLD * 2.;
+fn near(cell: &Arc<Mutex<Cell>>, position: [f32; 3]) -> bool {
+    return distance(cell.lock().unwrap().position(), position) <= SIZE_THRESHOLD * 2.;
 }
 
 enum Point {
     FromVertex(Vertex),
     FromF32([f32; 3]),
 }
-fn in_range(point: Point, cell: &Cell) -> bool {
-    let position;
+fn in_range(point: Point, cell: &Arc<Mutex<Cell>>) -> bool {
+    let point_position;
+    let cell_position;
+    let cell_radius;
     match point {
-        Point::FromVertex(vertex) => position = vertex.position,
-        Point::FromF32(pos) => position = pos,
+        Point::FromVertex(vertex) => point_position = vertex.position,
+        Point::FromF32(pos) => point_position = pos,
     }
-    return distance(cell.position(), position) <= radius_from_volume(cell.volume());
+    {
+        let cell = cell.lock().unwrap();
+        cell_position = cell.position().clone();
+        cell_radius = radius_from_volume(cell.volume().clone());
+    }
+    return distance(cell_position, point_position) <= cell_radius;
 }
