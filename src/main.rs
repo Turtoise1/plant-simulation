@@ -1,13 +1,6 @@
-use std::{
-    sync::{Arc, Mutex, Weak},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
 
-use engine::{
-    cell_renderer::{self, CellRenderer},
-    Simulation,
-};
+use engine::Simulation;
 use model::cell::Cell;
 use winit::event_loop::{ControlFlow, EventLoop};
 

@@ -1,11 +1,16 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{
+    f32::MIN_POSITIVE,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use camera::CameraController;
 use cell_renderer::Size;
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
-    application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop,
+    application::ApplicationHandler,
+    event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
+    event_loop::ActiveEventLoop,
     window::Window,
 };
 
@@ -164,7 +169,7 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
                 self.render(state);
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                let camera_controller = self.camera_controller.clone();
+                let camera_controller = Arc::clone(&self.camera_controller);
                 let _ = camera_controller
                     .lock()
                     .as_mut()
@@ -174,6 +179,39 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
                 state.update_camera();
                 let state = self.state.as_ref().unwrap();
                 self.render(state);
+            }
+            WindowEvent::MouseInput { button, state, .. } => match button {
+                MouseButton::Left => match state {
+                    ElementState::Released => {
+                        let position = self
+                            .state
+                            .as_ref()
+                            .unwrap()
+                            .mouse_position
+                            .as_ref()
+                            .unwrap();
+                        println!("Clicked at {:?}!", position);
+                        // TODO: if a cell has been hit with this position, set the cell as acive and use its center as camera center.
+                    }
+                    _ => {}
+                },
+                _ => {}
+            },
+            WindowEvent::MouseWheel { delta, phase, .. } => {
+                println!("Got mouse wheel event: {:?}, {:?}", delta, phase);
+                let camera_controller = Arc::clone(&self.camera_controller);
+                let _ = camera_controller
+                    .lock()
+                    .as_mut()
+                    .unwrap()
+                    .process_mouse_wheel(&delta, &phase);
+                let state = self.state.as_mut().unwrap();
+                state.update_camera();
+                let state = self.state.as_ref().unwrap();
+                self.render(state);
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.state.as_mut().unwrap().mouse_position = Some(position);
             }
             _ => {}
         }

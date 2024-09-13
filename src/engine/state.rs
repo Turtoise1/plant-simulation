@@ -4,7 +4,7 @@ use wgpu::{
     util::DeviceExt, Adapter, Backends, Buffer, Device, Instance, InstanceDescriptor,
     InstanceFlags, MemoryHints, Queue, RenderPipeline, Surface, TextureFormat,
 };
-use winit::window::Window;
+use winit::{dpi::PhysicalPosition, window::Window};
 
 use crate::model::cell::Cell;
 
@@ -21,6 +21,7 @@ pub struct ApplicationState<'window> {
     queue: Queue,
     render_pipeline: Option<RenderPipeline>,
     cells: Arc<Mutex<Vec<Arc<Mutex<Cell>>>>>,
+    pub mouse_position: Option<PhysicalPosition<f64>>,
     camera: Camera,
     camera_controller: Arc<Mutex<CameraController>>,
     camera_uniform: CameraUniform,
@@ -62,9 +63,9 @@ impl<'window> ApplicationState<'window> {
 
         let size = window.as_ref().inner_size();
         let camera = Camera {
-            // position the camera 1 unit up and 2 units back
+            // position the camera 1 unit up and 3 units back
             // +z is out of the screen
-            eye: (0.0, 1.0, 2.0).into(),
+            eye: (0.0, 1.0, 3.0).into(),
             // have it look at the origin
             target: (0.0, 0.0, 0.0).into(),
             // which way is "up"
@@ -114,6 +115,7 @@ impl<'window> ApplicationState<'window> {
             queue,
             render_pipeline: None,
             cells,
+            mouse_position: None,
             camera,
             camera_controller,
             camera_uniform,

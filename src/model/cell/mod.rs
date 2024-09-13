@@ -34,7 +34,7 @@ impl Cell {
             time_lived: 0,
             growth_factors: GrowthFactors {
                 size_threshold: SIZE_THRESHOLD,
-                growth_factor: 0.001,
+                growth_factor: 0.0002,
                 start_value: volume,
             },
             position,

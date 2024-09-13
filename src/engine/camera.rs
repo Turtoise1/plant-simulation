@@ -1,5 +1,5 @@
 use winit::{
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{ElementState, KeyEvent, MouseScrollDelta, TouchPhase, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
 };
 
@@ -76,6 +76,26 @@ impl CameraController {
             is_backward_pressed: false,
             is_left_pressed: false,
             is_right_pressed: false,
+        }
+    }
+
+    pub fn process_mouse_wheel(&mut self, delta: &MouseScrollDelta, phase: &TouchPhase) {
+        match phase {
+            TouchPhase::Moved => {
+                match delta {
+                    // Mouse wheel
+                    MouseScrollDelta::LineDelta(horizontal, vertical) => {
+                        self.is_right_pressed = *horizontal > self.speed;
+                        self.is_left_pressed = *horizontal < -self.speed;
+                        self.is_forward_pressed = *vertical > self.speed;
+                        self.is_backward_pressed = *vertical < -self.speed;
+                    }
+                    _ => {
+                        println!("PixelDelta is not handled at the moment!")
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
