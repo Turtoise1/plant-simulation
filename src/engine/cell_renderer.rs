@@ -33,6 +33,10 @@ impl CellRenderer {
         cell
     }
 
+    pub fn position(&self) -> [f32; 3] {
+        self.position
+    }
+
     pub fn set_position(&mut self, new_position: [f32; 3]) {
         self.position = new_position;
     }
@@ -101,17 +105,18 @@ impl CellRenderer {
     }
 
     // move self and near cells away from each other depending on their volumes
-    // the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts.
+    // the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts
     fn reposition(&mut self, near_cells: &Vec<Arc<Mutex<Cell>>>) {
         for other_cell in near_cells {
-            let min_dist = f32::max(
-                self.radius,
-                radius_from_volume(other_cell.lock().unwrap().volume()),
-            );
+            let other_radius;
             let other_pos;
             {
-                other_pos = other_cell.lock().unwrap().position().clone();
+                let other_cell = other_cell.lock().unwrap();
+                other_radius = radius_from_volume(other_cell.volume());
+                other_pos = other_cell.position();
             }
+            let min_dist = f32::max(self.radius, other_radius) // this value would make sense
+                + f32::min(1., f32::min(self.radius, other_radius)); // but let's add this value because the algorithm does not work otherwise
             if distance(self.position, other_pos) < min_dist {
                 self.push_away(other_cell, min_dist);
             }
@@ -119,7 +124,8 @@ impl CellRenderer {
     }
 
     // move self and other_cell away from each other depending on their volume
-    fn push_away(&mut self, other_cell: &Arc<Mutex<Cell>>, to_dist: f32) {
+    // returns the new position of the cell which has not been set yet.
+    fn push_away(&mut self, other_cell: &Arc<Mutex<Cell>>, to_dist: f32) -> [f32; 3] {
         let p1 = self.position;
         let w1 = self.radius;
         let p2;
@@ -152,21 +158,7 @@ impl CellRenderer {
         // Step 4: Compute the displacement needed to reach the target distance
         let displacement = d_target - length;
 
-        // Apply the displacement to both cells
-        {
-            let mut position = self.position;
-            position
-                .iter_mut()
-                .zip(direction_normalized.iter())
-                .for_each(|(p1_comp, &dir_comp)| {
-                    *p1_comp -= dir_comp * displacement * factor1;
-                });
-            println!("Deadlock nach dieser Zeile!");
-            // TODO: Die Zelle wird schon in src/engine/mods.rs in der Update-Methode gelocked, in der diese Methode aufgerufen wird.
-            // Dementsprechend passiert hier natürlich ein Deadlock.
-            self.cell.lock().unwrap().set_position(position);
-        }
-
+        // apply new position to the other cell
         {
             let mut other_cell = other_cell.lock().unwrap();
             let mut position = other_cell.position();
@@ -178,8 +170,24 @@ impl CellRenderer {
                 });
             other_cell.set_position(position);
         }
+
+        // cannot apply new position to this cell because it is locked. So instead we return the new position
+        let mut position;
+        {
+            position = self.position;
+            position
+                .iter_mut()
+                .zip(direction_normalized.iter())
+                .for_each(|(p1_comp, &dir_comp)| {
+                    *p1_comp -= dir_comp * displacement * factor1;
+                });
+            self.set_position(position);
+        }
+        position
     }
 
+    // if there are other cells nearby, this method moves the vertex position towards the cell middle
+    // such that there are no overlapping parts between the near cells
     fn get_rid_of_intersections(
         &self,
         vertex: Vertex,

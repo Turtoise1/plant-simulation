@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use camera::CameraController;
 use cell_renderer::Size;
@@ -19,7 +19,7 @@ pub mod cell_renderer;
 mod state;
 mod vertex;
 
-const LEVEL_OF_DETAIL: u16 = 30;
+const LEVEL_OF_DETAIL: u16 = 50;
 
 pub struct Simulation<'w> {
     cells: Arc<Mutex<Vec<Arc<Mutex<Cell>>>>>,
@@ -70,6 +70,7 @@ impl<'w> Simulation<'w> {
                     .collect::<Vec<_>>();
                 let mut cell = cell.lock().unwrap();
                 cell.update();
+                let mut new_position = None;
                 match &cell.renderer {
                     Some(renderer) => {
                         let mut renderer = renderer.lock().unwrap();
@@ -78,11 +79,18 @@ impl<'w> Simulation<'w> {
                             LEVEL_OF_DETAIL,
                             other_cells,
                         );
+                        new_position = Some(renderer.position());
                     }
                     None => {
                         println!("Renderer not initialized!");
                     }
                 };
+                match new_position {
+                    Some(position) => {
+                        cell.set_position(position);
+                    }
+                    _ => {}
+                }
             }
         }
         match &self.state {
