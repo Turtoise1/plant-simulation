@@ -15,6 +15,7 @@ fn main() {
     let cells = vec![
         Cell::new([-1., 0., 0.], 10.),
         Cell::new([0., 0., 0.], 1.),
+        Cell::new([0., 1., 0.], 2.),
         Cell::new([-1., 0., 2.], 1.),
     ];
 

@@ -1,7 +1,4 @@
-use std::{
-    f32::MIN_POSITIVE,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use camera::CameraController;
 use cell_renderer::Size;
@@ -9,7 +6,7 @@ use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
+    event::{ElementState, MouseButton, WindowEvent},
     event_loop::ActiveEventLoop,
     window::Window,
 };

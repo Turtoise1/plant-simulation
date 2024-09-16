@@ -1,3 +1,5 @@
+use tritet::{StrError, Tetgen, Trigen};
+
 use crate::model::cell::{Cell, SIZE_THRESHOLD};
 
 use super::vertex::Vertex;
@@ -42,11 +44,13 @@ impl CellRenderer {
     }
 
     pub fn update(&mut self, new_size: Size, lod: u16, other_cells: Vec<Arc<Mutex<Cell>>>) {
+        let triangle_centers = self.delaunay_triangulation(&other_cells).unwrap();
+
         let near_cells: Vec<Arc<Mutex<Cell>>> = other_cells
             .into_iter()
             .filter(|cell| near(cell, self.position))
             .collect();
-        self.reposition(&near_cells);
+        //self.reposition(&near_cells);
         let near_cells = near_cells; // does not need to be mutable anymore
 
         self.vertices = Vec::new();
@@ -104,8 +108,8 @@ impl CellRenderer {
         }
     }
 
-    // move self and near cells away from each other depending on their volumes
-    // the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts
+    /// move self and near cells away from each other depending on their volumes
+    /// the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts
     fn reposition(&mut self, near_cells: &Vec<Arc<Mutex<Cell>>>) {
         for other_cell in near_cells {
             let other_radius;
@@ -123,8 +127,8 @@ impl CellRenderer {
         }
     }
 
-    // move self and other_cell away from each other depending on their volume
-    // returns the new position of the cell which has not been set yet.
+    /// move self and other_cell away from each other depending on their volume
+    /// returns the new position of the cell which has not been set yet.
     fn push_away(&mut self, other_cell: &Arc<Mutex<Cell>>, to_dist: f32) -> [f32; 3] {
         let p1 = self.position;
         let w1 = self.radius;
@@ -186,8 +190,8 @@ impl CellRenderer {
         position
     }
 
-    // if there are other cells nearby, this method moves the vertex position towards the cell middle
-    // such that there are no overlapping parts between the near cells
+    /// if there are other cells nearby, this method moves the vertex position towards the cell middle
+    /// such that there are no overlapping parts between the near cells
     fn get_rid_of_intersections(
         &self,
         vertex: Vertex,
@@ -217,12 +221,59 @@ impl CellRenderer {
             }
             // lower_bound is now either the middle of the cell or the first point in this angle where another cell is touched
             let middle = midpoint(lower_bound, vertex.position);
-            // TODO : simply taking the middle does not work if two cells are nearer together than at least of their radiuses...
+            // TODO : middle? that doesnt even work in the easiest case stupid ass
+            // TODO : simply taking the middle does not work if two cells are nearer together than at least of one their radiuses...
             Vertex {
                 position: middle,
                 color: vertex.color,
             }
         }
+    }
+
+    /// uses delaunay triangulation to triangulate the cells centers and returns the centroids of the tetraeders
+    fn delaunay_triangulation(
+        &self,
+        other_cells: &Vec<Arc<Mutex<Cell>>>,
+    ) -> Result<Vec<[f64; 3]>, StrError> {
+        let n_points = other_cells.len() + 1;
+        if n_points < 4 {
+            return Ok(vec![]);
+        }
+        let mut tetgen = Tetgen::new(n_points, None, None, None)?;
+        for (index, cell) in other_cells.iter().enumerate() {
+            let pos = cell.lock().unwrap().position();
+            tetgen.set_point(index, 0, pos[0] as f64, pos[1] as f64, pos[2] as f64)?;
+        }
+        tetgen.set_point(
+            n_points - 1,
+            0,
+            self.position[0] as f64,
+            self.position[1] as f64,
+            self.position[2] as f64,
+        )?;
+
+        tetgen.generate_delaunay(false)?;
+        let mut centers = vec![];
+        for tetraeder_i in 0..tetgen.out_ncell() {
+            let mut out_points = vec![];
+            for m in 0..4 {
+                let p = tetgen.out_cell_point(tetraeder_i, m);
+                let point: [f64; 3] = [
+                    tetgen.out_point(p, 0),
+                    tetgen.out_point(p, 1),
+                    tetgen.out_point(p, 2),
+                ];
+                out_points.push(point);
+            }
+            let x = out_points[0][0] + out_points[1][0] + out_points[2][0] + out_points[3][0];
+            let x = x / 4.;
+            let y = out_points[0][1] + out_points[1][1] + out_points[2][1] + out_points[3][1];
+            let y = y / 4.;
+            let z = out_points[0][2] + out_points[1][2] + out_points[2][2] + out_points[3][2];
+            let z = z / 4.;
+            centers.push([x, y, z]);
+        }
+        Ok(centers)
     }
 }
 

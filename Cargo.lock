@@ -1259,6 +1259,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231b230927b5e4ad203db57bbcbee2802f6bce620b1e4a9024a07d94e2907ec"
 
 [[package]]
+name = "plotpy"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75a04eeeeb25784434138d5d7294b97a6f667cbe410a1426a13fe00ae5ca3868"
+
+[[package]]
 name = "polling"
 version = "3.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1437,6 +1443,7 @@ dependencies = [
  "bytemuck",
  "cgmath",
  "futures",
+ "tritet",
  "wgpu",
  "winit",
 ]
@@ -1628,6 +1635,17 @@ name = "tracing-core"
 version = "0.1.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c06d3da6113f116aaee68e4d601191614c9053067f9ab7f6edbcb161237daa54"
+
+[[package]]
+name = "tritet"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0104514790247059e2ef1f6c43c10c486c92c265de68540f0989c17cb2ff25c3"
+dependencies = [
+ "cc",
+ "once_cell",
+ "plotpy",
+]
 
 [[package]]
 name = "ttf-parser"
