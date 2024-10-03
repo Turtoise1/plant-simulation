@@ -235,6 +235,13 @@ impl CellRenderer {
         &self,
         other_cells: &Vec<Arc<Mutex<Cell>>>,
     ) -> Result<Vec<[f64; 3]>, StrError> {
+        // TODO:
+        // For each edge of the tretraeders:
+        //  Identify if the two connected cells do overlap on this edge
+        //  Find the point where the overlap of the two cells start (away from the tetraeder)
+        //  If there are more edges that have these overlaps do smart things:
+        //      Find the center of the triangle that is built from the edges that have overlaps
+        //      Connect the center to the point found above
         let n_points = other_cells.len() + 1;
         if n_points < 4 {
             return Ok(vec![]);
