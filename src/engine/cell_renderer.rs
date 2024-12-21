@@ -1,4 +1,4 @@
-use tritet::{StrError, Tetgen, Trigen};
+use tritet::{StrError, Tetgen};
 
 use crate::model::cell::{Cell, SIZE_THRESHOLD};
 
@@ -44,7 +44,7 @@ impl CellRenderer {
     }
 
     pub fn update(&mut self, new_size: Size, lod: u16, other_cells: Vec<Arc<Mutex<Cell>>>) {
-        let triangle_centers = self.delaunay_triangulation(&other_cells).unwrap();
+        let tetraeder_centers = self.delaunay_triangulation(&other_cells).unwrap();
 
         let near_cells: Vec<Arc<Mutex<Cell>>> = other_cells
             .into_iter()
