@@ -10,14 +10,14 @@ use crate::{
 
 pub const SIZE_THRESHOLD: f32 = 20.;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct GrowthFactors {
     size_threshold: f32,
     growth_factor: f32,
     start_value: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Cell {
     id: u64,
     time_lived: u32,

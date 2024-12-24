@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use camera::CameraController;
 use cell_renderer::Size;
+use delaunay::delaunay_triangulation;
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
@@ -18,6 +19,7 @@ use crate::{
 
 mod camera;
 pub mod cell_renderer;
+mod delaunay;
 mod state;
 mod vertex;
 
@@ -54,6 +56,9 @@ impl<'w> Simulation<'w> {
                 .iter()
                 .map(|cell| Arc::clone(cell))
                 .collect();
+
+            let tetraeders = delaunay_triangulation(&cell_refs).unwrap();
+            println!("{:?}", tetraeders);
             for cell in self.cells.lock().unwrap().iter() {
                 // Create a filtered Vec of the other cells
                 let other_cells = cell_refs

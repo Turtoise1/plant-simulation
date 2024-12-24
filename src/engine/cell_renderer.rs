@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CellRenderer {
     radius: f32,
     position: [f32; 3],
@@ -44,8 +44,6 @@ impl CellRenderer {
     }
 
     pub fn update(&mut self, new_size: Size, lod: u16, other_cells: Vec<Arc<Mutex<Cell>>>) {
-        let tetraeder_centers = self.delaunay_triangulation(&other_cells).unwrap();
-
         let near_cells: Vec<Arc<Mutex<Cell>>> = other_cells
             .into_iter()
             .filter(|cell| near(cell, self.position))
@@ -228,59 +226,6 @@ impl CellRenderer {
                 color: vertex.color,
             }
         }
-    }
-
-    /// uses delaunay triangulation to triangulate the cells centers and returns the centroids of the tetraeders
-    fn delaunay_triangulation(
-        &self,
-        other_cells: &Vec<Arc<Mutex<Cell>>>,
-    ) -> Result<Vec<[f64; 3]>, StrError> {
-        // TODO:
-        // For each edge of the tretraeders:
-        //  Identify if the two connected cells do overlap on this edge
-        //  Find the point where the overlap of the two cells start (away from the tetraeder)
-        //  If there are more edges that have these overlaps do smart things:
-        //      Find the center of the triangle that is built from the edges that have overlaps
-        //      Connect the center to the point found above
-        let n_points = other_cells.len() + 1;
-        if n_points < 4 {
-            return Ok(vec![]);
-        }
-        let mut tetgen = Tetgen::new(n_points, None, None, None)?;
-        for (index, cell) in other_cells.iter().enumerate() {
-            let pos = cell.lock().unwrap().position();
-            tetgen.set_point(index, 0, pos[0] as f64, pos[1] as f64, pos[2] as f64)?;
-        }
-        tetgen.set_point(
-            n_points - 1,
-            0,
-            self.position[0] as f64,
-            self.position[1] as f64,
-            self.position[2] as f64,
-        )?;
-
-        tetgen.generate_delaunay(false)?;
-        let mut centers = vec![];
-        for tetraeder_i in 0..tetgen.out_ncell() {
-            let mut out_points = vec![];
-            for m in 0..4 {
-                let p = tetgen.out_cell_point(tetraeder_i, m);
-                let point: [f64; 3] = [
-                    tetgen.out_point(p, 0),
-                    tetgen.out_point(p, 1),
-                    tetgen.out_point(p, 2),
-                ];
-                out_points.push(point);
-            }
-            let x = out_points[0][0] + out_points[1][0] + out_points[2][0] + out_points[3][0];
-            let x = x / 4.;
-            let y = out_points[0][1] + out_points[1][1] + out_points[2][1] + out_points[3][1];
-            let y = y / 4.;
-            let z = out_points[0][2] + out_points[1][2] + out_points[2][2] + out_points[3][2];
-            let z = z / 4.;
-            centers.push([x, y, z]);
-        }
-        Ok(centers)
     }
 }
 
