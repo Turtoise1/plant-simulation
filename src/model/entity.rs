@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub trait Entity {
-    fn get_entity_id(&self) -> u64;
+    fn entity_id(&self) -> u64;
     fn update(&mut self);
 }
 

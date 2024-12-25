@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use wgpu::{
     util::DeviceExt, Adapter, Backends, Buffer, Device, Instance, InstanceDescriptor,
@@ -6,7 +6,7 @@ use wgpu::{
 };
 use winit::{dpi::PhysicalPosition, window::Window};
 
-use crate::model::cell::Cell;
+use crate::shared::cell::Cell;
 
 use super::{
     camera::{Camera, CameraController, CameraUniform},
@@ -20,7 +20,7 @@ pub struct ApplicationState<'window> {
     device: Device,
     queue: Queue,
     render_pipeline: Option<RenderPipeline>,
-    cells: Arc<Mutex<Vec<Arc<Mutex<Cell>>>>>,
+    cells: Arc<RwLock<Vec<Cell>>>,
     pub mouse_position: Option<PhysicalPosition<f64>>,
     camera: Camera,
     camera_controller: Arc<Mutex<CameraController>>,
@@ -33,7 +33,7 @@ pub struct ApplicationState<'window> {
 impl<'window> ApplicationState<'window> {
     pub async fn new(
         window: Arc<Window>,
-        cells: Arc<Mutex<Vec<Arc<Mutex<Cell>>>>>,
+        cells: Arc<RwLock<Vec<Cell>>>,
         camera_controller: Arc<Mutex<CameraController>>,
     ) -> Self {
         let instance = create_instance();
@@ -135,14 +135,14 @@ impl<'window> ApplicationState<'window> {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let cells = self.cells.lock().unwrap();
+        let cells = self.cells.write().unwrap();
         // optionally splitting into parts, maybe useful for multithreading i don't know
         // let parts = split_into_parts(&cells, 8);
         let parts = &[&cells]; // instead only one part at the moment
 
         let mut encoders = Vec::new();
         for (index, cells) in parts.iter().enumerate() {
-            encoders.push(self.encode_cells(&view, cells, index == 0).finish());
+            encoders.push(self.encode_cells(&view, &cells, index == 0).finish());
         }
         self.queue.submit(encoders.into_iter());
 
@@ -154,7 +154,7 @@ impl<'window> ApplicationState<'window> {
     fn encode_cells(
         &self,
         view: &wgpu::TextureView,
-        cells: &[Arc<Mutex<Cell>>],
+        cells: &Vec<Cell>,
         first: bool,
     ) -> wgpu::CommandEncoder {
         let mut encoder = self
@@ -187,37 +187,29 @@ impl<'window> ApplicationState<'window> {
                 timestamp_writes: None,
             });
             for cell in cells.iter() {
-                match &cell.lock().unwrap().renderer {
-                    Some(renderer) => {
-                        let renderer = renderer.lock().unwrap();
-                        let vertices = &renderer.vertices;
-                        let indices = &renderer.indices;
-                        let vertex_buffer =
-                            self.device
-                                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                    label: Some("Vertex Buffer"),
-                                    contents: bytemuck::cast_slice(vertices),
-                                    usage: wgpu::BufferUsages::VERTEX,
-                                });
-                        let index_buffer =
-                            self.device
-                                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                    label: Some("Index Buffer"),
-                                    contents: bytemuck::cast_slice(indices),
-                                    usage: wgpu::BufferUsages::INDEX,
-                                });
-                        let num_indices = indices.len() as u32;
-                        render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-                        render_pass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
-                        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                        render_pass
-                            .set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                        render_pass.draw_indexed(0..num_indices, 0, 0..1);
-                    }
-                    None => {
-                        println!("No renderer present in cell!")
-                    }
-                };
+                let renderer = cell.renderer.read().unwrap();
+                let vertices = &renderer.vertices;
+                let indices = &renderer.indices;
+                let vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                let index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        });
+                let num_indices = indices.len() as u32;
+                render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                render_pass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.draw_indexed(0..num_indices, 0, 0..1);
             }
         };
         encoder

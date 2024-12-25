@@ -1,8 +1,7 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, RwLock};
 
 use camera::CameraController;
 use cell_renderer::Size;
-use delaunay::delaunay_triangulation;
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
@@ -12,10 +11,7 @@ use winit::{
     window::Window,
 };
 
-use crate::{
-    model::{cell::Cell, entity::Entity},
-    SimulationEvent,
-};
+use crate::{model::entity::Entity, shared::cell::Cell, SimulationEvent};
 
 mod camera;
 pub mod cell_renderer;
@@ -26,16 +22,16 @@ mod vertex;
 const LEVEL_OF_DETAIL: u16 = 50;
 
 pub struct Simulation<'w> {
-    cells: Arc<Mutex<Vec<Arc<Mutex<Cell>>>>>,
+    cells: Arc<RwLock<Vec<Cell>>>,
     window: Option<Arc<Window>>,
     camera_controller: Arc<Mutex<CameraController>>,
     state: Option<ApplicationState<'w>>,
 }
 
 impl<'w> Simulation<'w> {
-    pub fn new(cells: Vec<Arc<Mutex<Cell>>>) -> Self {
+    pub fn new(cells: Vec<Cell>) -> Self {
         let simulation = Simulation {
-            cells: Arc::new(Mutex::new(cells)),
+            cells: Arc::new(RwLock::new(cells)),
             window: None,
             state: None,
             camera_controller: Arc::new(Mutex::new(CameraController::new(0.2))),
@@ -49,54 +45,22 @@ impl<'w> Simulation<'w> {
 
     pub fn update(&mut self) {
         {
-            let cell_refs: Vec<_> = self
-                .cells
-                .lock()
-                .unwrap()
-                .iter()
-                .map(|cell| Arc::clone(cell))
-                .collect();
-
-            let tetraeders = delaunay_triangulation(&cell_refs).unwrap();
-            println!("{:?}", tetraeders);
-            for cell in self.cells.lock().unwrap().iter() {
-                // Create a filtered Vec of the other cells
-                let other_cells = cell_refs
-                    .iter()
-                    .filter_map(|other_cell| {
-                        let other_id;
-                        {
-                            other_id = other_cell.lock().unwrap().get_entity_id().clone();
-                        }
-                        if other_id != cell.lock().unwrap().get_entity_id() {
-                            Some(Arc::clone(other_cell))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                let mut cell = cell.lock().unwrap();
-                cell.update();
-                let mut new_position = None;
-                match &cell.renderer {
-                    Some(renderer) => {
-                        let mut renderer = renderer.lock().unwrap();
-                        renderer.update(
-                            Size::FromVolume(cell.volume()),
-                            LEVEL_OF_DETAIL,
-                            other_cells,
-                        );
-                        new_position = Some(renderer.position());
-                    }
-                    None => {
-                        println!("Renderer not initialized!");
-                    }
-                };
-                match new_position {
-                    Some(position) => {
-                        cell.set_position(position);
-                    }
-                    _ => {}
+            // let tetraeders = delaunay_triangulation(&self.cells).unwrap();
+            // println!("{:?}", tetraeders);
+            let mut cell_write_guard = self.cells.write().unwrap();
+            for cell in cell_write_guard.iter_mut() {
+                {
+                    let mut bio_write_guard = cell.bio.write().unwrap();
+                    bio_write_guard.update();
+                }
+                {
+                    let bio_read_guard = cell.bio.read().unwrap();
+                    let mut renderer_write_guard = cell.renderer.write().unwrap();
+                    renderer_write_guard.update(
+                        Size::FromVolume(bio_read_guard.volume().clone()),
+                        LEVEL_OF_DETAIL,
+                        &vec![],
+                    );
                 }
             }
         }
@@ -109,14 +73,14 @@ impl<'w> Simulation<'w> {
     }
 }
 
-fn get_other_cells(cells: &MutexGuard<'_, Vec<Cell>>, cell: &Cell) -> Vec<Cell> {
-    let other_cells: Vec<Cell> = cells
-        .iter()
-        .filter(|other_cell| other_cell.get_entity_id() != cell.get_entity_id())
-        .map(|other_cell| other_cell.clone()) // Clone the cell here
-        .collect();
-    other_cells
-}
+// fn get_other_cells(cells: &MutexGuard<'_, Vec<Cell>>, cell: &Cell) -> Vec<Cell> {
+//     let other_cells: Vec<Cell> = cells
+//         .iter()
+//         .filter(|other_cell| other_cell.entity_id() != cell.entity_id())
+//         .map(|other_cell| other_cell.clone()) // Clone the cell here
+//         .collect();
+//     other_cells
+// }
 
 impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {

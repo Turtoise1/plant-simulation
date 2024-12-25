@@ -1,11 +1,12 @@
 use std::{thread, time::Duration};
 
 use engine::Simulation;
-use model::cell::Cell;
+use shared::{cell::Cell, point::Point3};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod engine;
 mod model;
+mod shared;
 
 enum SimulationEvent {
     Update,
@@ -13,10 +14,38 @@ enum SimulationEvent {
 
 fn main() {
     let cells = vec![
-        Cell::new([-1., 0., 0.], 10.),
-        Cell::new([0., 0., 0.], 1.),
-        Cell::new([0., 1., 0.], 2.),
-        Cell::new([-1., 0., 2.], 1.),
+        Cell::new(
+            Point3 {
+                x: -1.,
+                y: 0.,
+                z: 0.,
+            },
+            10.,
+        ),
+        Cell::new(
+            Point3 {
+                x: 0.,
+                y: 0.,
+                z: 0.,
+            },
+            1.,
+        ),
+        Cell::new(
+            Point3 {
+                x: 0.,
+                y: 2.,
+                z: 0.,
+            },
+            2.,
+        ),
+        Cell::new(
+            Point3 {
+                x: -1.,
+                y: 0.,
+                z: 2.,
+            },
+            1.,
+        ),
     ];
 
     let mut simulation = Simulation::new(cells);

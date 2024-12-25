@@ -1,11 +1,14 @@
 use std::{
     f32::consts::E,
-    sync::{Arc, Mutex, Weak},
+    sync::{atomic::AtomicU32, Arc, RwLock, RwLockReadGuard},
 };
 
 use crate::{
-    engine::cell_renderer::{radius_from_volume, CellRenderer},
     model::entity::{generate_id, Entity},
+    shared::{
+        cell::{BiologicalCellEvent, CellEvent, EventSystem},
+        point::Point3,
+    },
 };
 
 pub const SIZE_THRESHOLD: f32 = 20.;
@@ -17,71 +20,71 @@ pub struct GrowthFactors {
     start_value: f32,
 }
 
-#[derive(Clone, Debug)]
-pub struct Cell {
+#[derive(Debug)]
+pub struct BiologicalCell {
     id: u64,
-    time_lived: u32,
+    time_lived: AtomicU32,
     growth_factors: GrowthFactors,
-    position: [f32; 3],
-    volume: f32,
-    pub renderer: Option<Arc<Mutex<CellRenderer>>>,
+    pub position: Arc<RwLock<Point3<f32>>>,
+    volume: Arc<RwLock<f32>>,
+    events: Arc<EventSystem>,
 }
 
-impl Cell {
-    pub fn new(position: [f32; 3], volume: f32) -> Arc<Mutex<Cell>> {
-        let cell = Cell {
+impl BiologicalCell {
+    pub fn new(position: &Point3<f32>, volume: f32, events: Arc<EventSystem>) -> Self {
+        let cell = BiologicalCell {
             id: generate_id(),
-            time_lived: 0,
+            time_lived: AtomicU32::new(0),
             growth_factors: GrowthFactors {
                 size_threshold: SIZE_THRESHOLD,
                 growth_factor: 0.0002,
                 start_value: volume,
             },
-            position,
-            volume,
-            renderer: Option::None,
+            position: Arc::new(RwLock::new(position.clone())),
+            volume: Arc::new(RwLock::new(volume)),
+            events,
         };
-        let cell_arc = Arc::new(Mutex::new(cell));
-        let renderer = CellRenderer::new(Arc::clone(&cell_arc), position);
-        let renderer = Arc::new(Mutex::new(renderer));
-        cell_arc.lock().unwrap().renderer = Some(renderer);
-        cell_arc
+        cell
     }
 
-    pub fn position(&self) -> [f32; 3] {
+    pub fn position(&self) -> RwLockReadGuard<Point3<f32>> {
         self.position
+            .read()
+            .expect("Failed to get position from cell!")
     }
 
-    pub fn set_position(&mut self, position: [f32; 3]) {
-        self.position = position;
-        match &self.renderer {
-            Some(renderer) => {
-                let mut renderer = renderer.lock().unwrap();
-                renderer.set_position(position);
-            }
-            None => {
-                println!(
-                    "Renderer of cell {} is not initialized yet!",
-                    self.get_entity_id()
-                )
-            }
-        }
-    }
-
-    pub fn volume(&self) -> f32 {
+    pub fn volume(&self) -> RwLockReadGuard<f32> {
         self.volume
+            .read()
+            .expect("Failed to get position from cell!")
+    }
+
+    pub fn update_position(&mut self, position: &Point3<f32>) {
+        let event = CellEvent::FromBio(BiologicalCellEvent::UpdatePosition(position.clone()));
+        self.events.notify(&event);
     }
 }
 
-impl Entity for Cell {
-    fn get_entity_id(&self) -> u64 {
+impl Entity for BiologicalCell {
+    fn entity_id(&self) -> u64 {
         self.id
     }
     fn update(&mut self) {
-        self.time_lived = self.time_lived + 1;
-        self.volume = logistic_growth(self.growth_factors)(self.time_lived);
+        self.time_lived
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        println!("Cell {} has volume {}", self.get_entity_id(), self.volume());
+        let new_volume = logistic_growth(self.growth_factors)(
+            self.time_lived.load(std::sync::atomic::Ordering::Relaxed),
+        );
+        {
+            let mut vol_mut = self
+                .volume
+                .write()
+                .expect("Failed to update volume of cell!");
+            *vol_mut = new_volume;
+        }
+
+        println!("Cell {} at {}", self.entity_id(), self.position());
     }
 }
 

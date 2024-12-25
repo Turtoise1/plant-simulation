@@ -1,5 +1,5 @@
 use winit::{
-    event::{ElementState, KeyEvent, MouseScrollDelta, TouchPhase, WindowEvent},
+    event::{ElementState, KeyEvent, MouseScrollDelta, TouchPhase},
     keyboard::{KeyCode, PhysicalKey},
 };
 
