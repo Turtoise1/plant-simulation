@@ -1,3 +1,4 @@
+use cgmath::Point3;
 use std::{
     f32::consts::E,
     sync::{atomic::AtomicU32, Arc, RwLock, RwLockReadGuard},
@@ -5,10 +6,7 @@ use std::{
 
 use crate::{
     model::entity::{generate_id, Entity},
-    shared::{
-        cell::{BiologicalCellEvent, CellEvent, EventSystem},
-        point::Point3,
-    },
+    shared::cell::{BiologicalCellEvent, CellEvent, EventSystem},
 };
 
 pub const SIZE_THRESHOLD: f32 = 20.;
@@ -84,7 +82,7 @@ impl Entity for BiologicalCell {
             *vol_mut = new_volume;
         }
 
-        println!("Cell {} at {}", self.entity_id(), self.position());
+        println!("Cell {} at {:?}", self.entity_id(), self.position());
     }
 }
 

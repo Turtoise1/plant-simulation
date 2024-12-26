@@ -3,9 +3,11 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-use crate::{engine::cell_renderer::CellRenderer, model::cell::BiologicalCell};
-
-use super::point::Point3;
+use crate::{
+    engine::cell_renderer::CellRenderer,
+    model::{cell::BiologicalCell, entity::Entity},
+};
+use cgmath::Point3;
 
 #[derive(Debug)]
 pub struct Cell {
@@ -17,14 +19,15 @@ pub struct Cell {
 impl Cell {
     pub fn new(position: Point3<f32>, volume: f32) -> Self {
         let events = Arc::new(EventSystem::new());
-        let renderer = Arc::new(RwLock::new(CellRenderer::new(
-            &position,
-            &volume,
-            Arc::clone(&events),
-        )));
         let bio = Arc::new(RwLock::new(BiologicalCell::new(
             &position,
             volume,
+            Arc::clone(&events),
+        )));
+        let renderer = Arc::new(RwLock::new(CellRenderer::new(
+            &position,
+            &volume,
+            bio.read().unwrap().entity_id(),
             Arc::clone(&events),
         )));
         let bio_clone = Arc::clone(&bio);
@@ -44,13 +47,15 @@ impl Cell {
     ) {
         events.subscribe(Box::new(move |e| match e {
             CellEvent::FromBio(e) => match e {
-                BiologicalCellEvent::UpdatePosition(pos) => {
-                    renderer.write().unwrap().position.set(pos);
+                BiologicalCellEvent::UpdatePosition(new_pos) => {
+                    renderer.write().unwrap().position = *new_pos;
                 }
             },
             CellEvent::FromRenderer(e) => match e {
-                CellRendererEvent::UpdatePosition(pos) => {
-                    bio.write().unwrap().position.write().unwrap().set(pos);
+                CellRendererEvent::UpdatePosition(new_pos) => {
+                    let bio = bio.write().unwrap();
+                    let mut pos = bio.position.write().unwrap();
+                    *pos = *new_pos;
                 }
             },
         }));

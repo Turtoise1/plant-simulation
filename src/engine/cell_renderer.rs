@@ -1,9 +1,16 @@
+use super::{
+    delaunay::{CellInformation, TetGenResult, TetraederOfCells},
+    vertex::Vertex,
+};
 use crate::{
     model::cell::BiologicalCell,
-    shared::{cell::EventSystem, point::Point3},
+    shared::{
+        cell::EventSystem,
+        plane::{point_vs_plane, signed_distance, Classification, Plane},
+    },
 };
-
-use super::{delaunay::TetraederOfCells, vertex::Vertex};
+use cgmath::{InnerSpace, Point3, Vector3};
+use rand::random;
 use std::{
     f32::consts::PI,
     sync::{Arc, Mutex},
@@ -11,10 +18,11 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub struct CellRenderer {
-    radius: f32,
+    pub radius: f32,
     pub position: Point3<f32>,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
+    pub cell_id: u64,
     events: Arc<EventSystem>,
 }
 
@@ -24,12 +32,13 @@ pub enum Size {
 }
 
 impl CellRenderer {
-    pub fn new(position: &Point3<f32>, volume: &f32, events: Arc<EventSystem>) -> Self {
+    pub fn new(position: &Point3<f32>, volume: &f32, id: u64, events: Arc<EventSystem>) -> Self {
         let renderer = CellRenderer {
             radius: radius_from_volume(volume),
             position: position.clone(),
             vertices: Vec::new(),
             indices: Vec::new(),
+            cell_id: id,
             events,
         };
         renderer
@@ -43,12 +52,7 @@ impl CellRenderer {
         self.position = new_position.clone();
     }
 
-    pub fn update(
-        &mut self,
-        new_size: Size,
-        lod: u16,
-        included_in_tetraeders: &Vec<TetraederOfCells<f64>>,
-    ) {
+    pub fn update(&mut self, new_size: Size, lod: u16, included_in_tetraeders: &TetGenResult<f32>) {
         self.vertices = Vec::new();
         self.indices = Vec::new();
 
@@ -63,7 +67,7 @@ impl CellRenderer {
         let sector_step = 2.0 * PI / sector_count as f32;
         let stack_step = PI / stack_count as f32;
 
-        // let plain = self.get_intersection_plains(included_in_tetraeders);
+        let planes = self.create_intersection_planes_from_tet_gen_result(included_in_tetraeders);
 
         for i in 0..=stack_count {
             let stack_angle = PI / 2.0 - i as f32 * stack_step;
@@ -84,8 +88,7 @@ impl CellRenderer {
                     color: [1., 1., 1.],
                 };
 
-                // TODO!
-                // let vertex = self.get_rid_of_intersections(vertex, included_in_tetraeders);
+                let vertex = self.get_rid_of_intersections(vertex, &planes);
                 self.vertices.push(vertex);
             }
         }
@@ -188,55 +191,97 @@ impl CellRenderer {
         position
     }
 
-    // TODO!
-    // fn get_intersection_plains(&self, included_in_tetraeders: &Vec<TetraederOfCells<f64>>) {
-    //     included_in_tetraeders.iter().for_each(|tetraeder| {
-    //         let nodes: Vec<(&Point3<f64>, &Arc<Mutex<Cell>>)> = tetraeder
-    //             .nodes()
-    //             .iter()
-    //             .filter(|n| near(&n.1, self.))
-    //             .map(|n| (&n.0, &n.1))
-    //             .collect();
-    //     });
-    // }
-
-    /// if there are other cells nearby, this method moves the vertex position towards the cell middle
-    /// such that there are no overlapping parts between the near cells
-    fn get_rid_of_intersections(
+    fn create_intersection_planes_from_tet_gen_result(
         &self,
-        vertex: Vertex,
-        near_cells: &Vec<Arc<Mutex<BiologicalCell>>>,
-    ) -> Vertex {
-        let intersections: Vec<&Arc<Mutex<BiologicalCell>>> = near_cells
+        tet_gen_result: &TetGenResult<f32>,
+    ) -> Vec<Plane<f32>> {
+        let mut planes: Vec<Plane<f32>> = vec![];
+        match tet_gen_result {
+            TetGenResult::Success(tetraeders) => {
+                tetraeders.iter().for_each(|tetraeder| {
+                    planes.append(
+                        &mut self
+                            .create_intersection_planes_from_cell_information(tetraeder.nodes()),
+                    );
+                });
+            }
+            TetGenResult::TooFewCells(cells) => {
+                planes.append(&mut self.create_intersection_planes_from_cell_information(cells));
+            }
+        }
+        planes
+    }
+
+    fn create_intersection_planes_from_cell_information(
+        &self,
+        cells: &[CellInformation<f32>],
+    ) -> Vec<Plane<f32>> {
+        let mut planes = vec![];
+        let intersecting_cells: Vec<&CellInformation<f32>> = cells
             .iter()
-            .filter(|cell| in_range(Point::FromVertex(vertex), cell))
+            .filter(|c| c.id != self.cell_id)
+            .filter(|c| intersect(&self, &c))
             .collect();
-        if intersections.is_empty() {
-            vertex
-        } else {
-            // find middle between vertex and the cell that overlaps the cell the most on this angle
-            let mut upper_bound = vertex.position;
-            let mut lower_bound: [f32; 3] = self.position.clone().into();
-            while distance(&upper_bound, &lower_bound) > 0.05 {
-                let middle = midpoint(lower_bound.into(), upper_bound);
-                let intersections: Vec<_> = intersections
-                    .iter()
-                    .filter(|cell| in_range(Point::FromF32(middle), cell))
-                    .collect();
-                if intersections.is_empty() {
-                    lower_bound = middle;
-                } else {
-                    upper_bound = middle;
-                }
+        intersecting_cells.iter().for_each(|cell| {
+            planes.push(self.get_intersection_plane_one_other(cell));
+        });
+        planes
+    }
+
+    /// expects that this cell and the given other cell intersect
+    /// returns a plain that separates both cells fairly
+    fn get_intersection_plane_one_other(&self, other: &CellInformation<f32>) -> Plane<f32> {
+        let p1 = self.position();
+        let self_as_ci = CellInformation {
+            id: self.cell_id,
+            position: self.position,
+            radius: self.radius,
+        };
+        let middle = between_depending_on_radius(&self_as_ci, other);
+        let p2 = other.position;
+        let v_cell_to_cell = Vector3 {
+            x: p2.x - p1.x,
+            y: p2.y - p1.y,
+            z: p2.z - p1.z,
+        };
+        Plane::<f32> {
+            pos: Vector3 {
+                x: middle.x,
+                y: middle.y,
+                z: middle.z,
+            },
+            normal: v_cell_to_cell.normalize(),
+        }
+    }
+
+    /// look at the planes that divide this cell from near neighbours
+    /// if the vertex is on the same side as the center, keep it
+    /// else move it to the plane
+    fn get_rid_of_intersections(&self, vertex: Vertex, planes: &Vec<Plane<f32>>) -> Vertex {
+        let mut vertex = vertex;
+        planes.iter().for_each(|plane| {
+            let class_cell = point_vs_plane(&self.position, plane);
+            let class_vertex = point_vs_plane(&vertex.position.into(), plane);
+            if class_cell != class_vertex
+                && class_cell != Classification::Intersects
+                && class_vertex != Classification::Intersects
+            {
+                vertex = self.move_vertex_towards_plane(vertex, plane);
             }
-            // lower_bound is now either the middle of the cell or the first point in this angle where another cell is touched
-            let middle = midpoint(lower_bound.into(), vertex.position);
-            // TODO : middle? that doesnt even work in the easiest case stupid ass
-            // TODO : simply taking the middle does not work if two cells are nearer together than at least of one their radiuses...
-            Vertex {
-                position: middle,
-                color: vertex.color,
-            }
+        });
+        vertex
+    }
+
+    fn move_vertex_towards_plane(&self, vertex: Vertex, plane: &Plane<f32>) -> Vertex {
+        let vertex_pos: Point3<f32> = vertex.position.into();
+        let dist = signed_distance(&vertex_pos, plane);
+        Vertex {
+            color: vertex.color,
+            position: [
+                vertex.position[0] - dist * plane.normal.x,
+                vertex.position[1] - dist * plane.normal.y,
+                vertex.position[2] - dist * plane.normal.z,
+            ],
         }
     }
 }
@@ -246,15 +291,48 @@ pub fn radius_from_volume(volume: &f32) -> f32 {
     f32::powf((3. * volume) / (4. * PI), 1. / 3.)
 }
 
-fn midpoint(point1: [f32; 3], point2: [f32; 3]) -> [f32; 3] {
-    [
-        (point1[0] + point2[0]) / 2.0,
-        (point1[1] + point2[1]) / 2.0,
-        (point1[2] + point2[2]) / 2.0,
-    ]
+fn between_depending_on_radius(
+    cell1: &CellInformation<f32>,
+    cell2: &CellInformation<f32>,
+) -> Point3<f32> {
+    let mut radius_capped1 = cell1.radius;
+    let mut radius_capped2 = cell2.radius;
+    let dist = distance(&cell1.position, &cell2.position);
+    if radius_capped1 > dist {
+        radius_capped1 = dist;
+    }
+    if radius_capped2 > dist {
+        radius_capped2 = dist;
+    }
+    // between 0 and 1
+    let overlap = radius_capped1 + radius_capped2 - dist;
+    let factor = (radius_capped2 - overlap / 2.) / dist;
+    println!(
+        "cell2({}) cell2({}) - Dist:{} Overlap:{} Factor:{}",
+        cell2.radius, cell1.radius, dist, overlap, factor
+    );
+    Point3::<f32> {
+        x: cell2.position.x + factor * (cell1.position.x - cell2.position.x),
+        y: cell2.position.y + factor * (cell1.position.y - cell2.position.y),
+        z: cell2.position.z + factor * (cell1.position.z - cell2.position.z),
+    }
 }
 
-fn distance(point1: &[f32; 3], point2: &[f32; 3]) -> f32 {
+fn orthogonal_normal(vec: &Vector3<f32>) -> Vector3<f32> {
+    let tangent = random_tangent(vec);
+    let orthogonal = vec.cross(tangent);
+    orthogonal.normalize()
+}
+
+fn random_tangent(vec: &Vector3<f32>) -> Vector3<f32> {
+    Vector3 {
+        x: vec.x,
+        y: random::<f32>() * 360.,
+        z: vec.z,
+    }
+}
+
+fn distance(point1: &Point3<f32>, point2: &Point3<f32>) -> f32 {
     f32::sqrt(
         (0..3) // includes 0, excludes 3
             .map(|xyz| f32::powi(point2[xyz] - point1[xyz], 2))
@@ -268,13 +346,10 @@ fn distance(point1: &[f32; 3], point2: &[f32; 3]) -> f32 {
 // }
 
 /// returns whether the cells positions are further away from each other than sum of the radiuses
-// fn intersect(cell1: &Arc<Mutex<Cell>>, cell2: &Arc<Mutex<Cell>>) -> bool {
-//     let cell1 = cell1.lock().unwrap();
-//     let cell2 = cell2.lock().unwrap();
-//     let min_distance = radius_from_volume(&cell1.volume()) + radius_from_volume(&cell2.volume());
-//     let pos1 : [f32; 3] = cell1.position().into();
-//     distance(&pos1, &cell2.position()) < min_distance
-// }
+fn intersect(cell1: &CellRenderer, cell2: &CellInformation<f32>) -> bool {
+    let min_distance = cell1.radius + cell2.radius;
+    distance(&cell1.position, &cell2.position) < min_distance
+}
 
 enum Point {
     FromVertex(Vertex),
@@ -293,5 +368,5 @@ fn in_range(point: Point, cell: &Arc<Mutex<BiologicalCell>>) -> bool {
         cell_position = cell.position().clone();
         cell_radius = radius_from_volume(&cell.volume());
     }
-    return distance(&cell_position.into(), &point_position) <= cell_radius;
+    return distance(&cell_position, &point_position.into()) <= cell_radius;
 }

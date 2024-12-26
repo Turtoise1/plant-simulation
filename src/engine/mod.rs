@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use camera::CameraController;
 use cell_renderer::Size;
+use delaunay::delaunay_triangulation;
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
@@ -45,10 +46,16 @@ impl<'w> Simulation<'w> {
 
     pub fn update(&mut self) {
         {
-            // let tetraeders = delaunay_triangulation(&self.cells).unwrap();
-            // println!("{:?}", tetraeders);
-            let mut cell_write_guard = self.cells.write().unwrap();
-            for cell in cell_write_guard.iter_mut() {
+            let tet_result;
+            {
+                let cells_read_guard = self.cells.read().unwrap();
+                tet_result = match delaunay_triangulation(&cells_read_guard) {
+                    Ok(res) => res,
+                    Err(err) => panic!("An error occured in the delaunay triangulation!\n{}", err),
+                };
+            }
+            let mut cells_write_guard = self.cells.write().unwrap();
+            for cell in cells_write_guard.iter_mut() {
                 {
                     let mut bio_write_guard = cell.bio.write().unwrap();
                     bio_write_guard.update();
@@ -59,7 +66,7 @@ impl<'w> Simulation<'w> {
                     renderer_write_guard.update(
                         Size::FromVolume(bio_read_guard.volume().clone()),
                         LEVEL_OF_DETAIL,
-                        &vec![],
+                        &tet_result,
                     );
                 }
             }

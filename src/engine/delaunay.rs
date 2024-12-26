@@ -1,32 +1,52 @@
-use std::fmt::{Debug, Display};
-
-use cgmath::num_traits::Num;
+use crate::{model::entity::Entity, shared::cell::Cell};
+use cgmath::{BaseFloat, Point3};
+use std::fmt::Debug;
 use tritet::{StrError, Tetgen};
 
-use crate::shared::{cell::Cell, point::Point3};
+use super::cell_renderer::{radius_from_volume, CellRenderer};
 
-pub struct TetraederOfCells<'c, T: Num + Copy + Display> {
-    nodes: [(Point3<T>, &'c Cell); 4],
+#[derive(Clone, Debug)]
+pub struct CellInformation<T: BaseFloat> {
+    pub id: u64,
+    pub position: Point3<T>,
+    pub radius: T,
 }
 
-impl<'c, T: Num + Copy + Display> TetraederOfCells<'c, T> {
-    pub fn new(nodes: [(Point3<T>, &'c Cell); 4]) -> Self {
+impl From<CellRenderer> for CellInformation<f32> {
+    fn from(value: CellRenderer) -> Self {
+        Self {
+            id: value.cell_id,
+            position: value.position().clone(),
+            radius: value.radius,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TetraederOfCells<T: BaseFloat> {
+    nodes: [CellInformation<T>; 4],
+}
+
+pub enum TetGenResult<T: BaseFloat> {
+    Success(Vec<TetraederOfCells<T>>),
+    TooFewCells(Vec<CellInformation<T>>),
+}
+
+impl<T: BaseFloat> TetraederOfCells<T> {
+    pub fn new(nodes: [CellInformation<T>; 4]) -> Self {
         Self { nodes }
     }
-    pub fn nodes(&self) -> &[(Point3<T>, &Cell); 4] {
+    pub fn nodes(&self) -> &[CellInformation<T>; 4] {
         &self.nodes
     }
     pub fn points(&self) -> [&Point3<T>; 4] {
-        self.nodes.each_ref().map(|n| &n.0)
+        self.nodes.each_ref().map(|n| &n.position)
     }
-    pub fn cells(&self) -> [&Cell; 4] {
-        self.nodes.each_ref().map(|n| n.1)
-    }
-    pub fn nodes_mut(&'c mut self) -> &mut [(Point3<T>, &Cell); 4] {
+    pub fn nodes_mut(&mut self) -> &mut [CellInformation<T>; 4] {
         &mut self.nodes
     }
     pub fn points_mut(&mut self) -> [&mut Point3<T>; 4] {
-        self.nodes.each_mut().map(|n| &mut n.0)
+        self.nodes.each_mut().map(|n| &mut n.position)
     }
     pub fn center(&self) -> Point3<T> {
         let mut x = T::zero();
@@ -41,54 +61,52 @@ impl<'c, T: Num + Copy + Display> TetraederOfCells<'c, T> {
     }
 }
 
-impl<'c, T: Num + Copy + Display> Debug for TetraederOfCells<'c, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let points = self.points();
-        write!(
-            f,
-            "Tetraeder [{}, {}, {}, {}]",
-            points[0], points[1], points[2], points[3]
-        )
-    }
-}
-
 /// uses delaunay triangulation to triangulate the cells centers
 /// returns the resulting tetraeders
-pub fn delaunay_triangulation<'c>(
-    cells: &'c Vec<Cell>,
-) -> Result<Vec<TetraederOfCells<'c, f64>>, StrError> {
-    // TODO:
-    // For each edge of the tretraeders:
-    //  Identify if the two connected cells do overlap on this edge
-    //  Find the point where the overlap of the two cells start (away from the tetraeder)
-    //  If there are more edges that have these overlaps do smart things:
-    //      Find the center of the triangle that is built from the edges that have overlaps
-    //      Connect the center to the point found above
+pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, StrError> {
     let n_points = cells.len();
     if n_points < 4 {
-        return Ok(vec![]);
+        let information: Vec<CellInformation<f32>> = cells
+            .iter()
+            .map(|c| {
+                let renderer = c.renderer.read().unwrap();
+                CellInformation::<f32> {
+                    id: renderer.cell_id,
+                    position: renderer.position().clone(),
+                    radius: renderer.radius,
+                }
+            })
+            .collect();
+        return Ok(TetGenResult::TooFewCells(information));
     }
     let mut tetgen = Tetgen::new(n_points, None, None, None)?;
     for (index, cell) in cells.iter().enumerate() {
         let read_guard = cell.bio.read().unwrap();
         let pos = read_guard.position();
         tetgen.set_point(index, 0, pos.x as f64, pos.y as f64, pos.z as f64)?;
+        println!("index {}, pos {:?}", index, pos);
     }
-
     tetgen.generate_delaunay(false)?;
+    println!("Test");
     let mut tetraeders = vec![];
     for tetraeder_i in 0..tetgen.out_ncell() {
-        let mut out_points = vec![];
+        let mut out = vec![];
         for m in 0..4 {
             let p = tetgen.out_cell_point(tetraeder_i, m);
-            let point = Point3::<f64> {
-                x: tetgen.out_point(p, 0),
-                y: tetgen.out_point(p, 1),
-                z: tetgen.out_point(p, 2),
+            let point = Point3::<f32> {
+                x: tetgen.out_point(p, 0) as f32,
+                y: tetgen.out_point(p, 1) as f32,
+                z: tetgen.out_point(p, 2) as f32,
             };
-            out_points.push((point, cells.get(p).unwrap()));
+            let cell = cells.get(p).unwrap();
+            let bio = cell.bio.read().unwrap();
+            out.push(CellInformation {
+                id: bio.entity_id(),
+                position: point,
+                radius: radius_from_volume(&bio.volume()),
+            });
         }
-        tetraeders.push(TetraederOfCells::new(out_points.try_into().unwrap()));
+        tetraeders.push(TetraederOfCells::new(out.try_into().unwrap()));
     }
-    Ok(tetraeders)
+    Ok(TetGenResult::Success(tetraeders))
 }

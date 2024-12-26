@@ -1,7 +1,8 @@
 use std::{thread, time::Duration};
 
+use cgmath::Point3;
 use engine::Simulation;
-use shared::{cell::Cell, point::Point3};
+use shared::cell::Cell;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod engine;
@@ -16,35 +17,43 @@ fn main() {
     let cells = vec![
         Cell::new(
             Point3 {
-                x: -1.,
+                x: 0.,
                 y: 0.,
                 z: 0.,
             },
-            10.,
+            3.,
+        ),
+        Cell::new(
+            Point3 {
+                x: 0.,
+                y: 1.,
+                z: 0.,
+            },
+            3.,
+        ),
+        Cell::new(
+            Point3 {
+                x: 0.,
+                y: -1.,
+                z: 0.,
+            },
+            3.,
         ),
         Cell::new(
             Point3 {
                 x: 0.,
                 y: 0.,
-                z: 0.,
+                z: 1.,
             },
-            1.,
+            3.,
         ),
         Cell::new(
             Point3 {
                 x: 0.,
-                y: 2.,
-                z: 0.,
-            },
-            2.,
-        ),
-        Cell::new(
-            Point3 {
-                x: -1.,
                 y: 0.,
-                z: 2.,
+                z: -1.,
             },
-            1.,
+            3.,
         ),
     ];
 
