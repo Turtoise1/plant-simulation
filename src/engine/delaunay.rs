@@ -84,10 +84,8 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
         let read_guard = cell.bio.read().unwrap();
         let pos = read_guard.position();
         tetgen.set_point(index, 0, pos.x as f64, pos.y as f64, pos.z as f64)?;
-        println!("index {}, pos {:?}", index, pos);
     }
     tetgen.generate_delaunay(false)?;
-    println!("Test");
     let mut tetraeders = vec![];
     for tetraeder_i in 0..tetgen.out_ncell() {
         let mut out = vec![];

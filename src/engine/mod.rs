@@ -20,7 +20,7 @@ mod delaunay;
 mod state;
 mod vertex;
 
-const LEVEL_OF_DETAIL: u16 = 50;
+const LEVEL_OF_DETAIL: u16 = 20;
 
 pub struct Simulation<'w> {
     cells: Arc<RwLock<Vec<Cell>>>,

@@ -307,10 +307,6 @@ fn between_depending_on_radius(
     // between 0 and 1
     let overlap = radius_capped1 + radius_capped2 - dist;
     let factor = (radius_capped2 - overlap / 2.) / dist;
-    println!(
-        "cell2({}) cell2({}) - Dist:{} Overlap:{} Factor:{}",
-        cell2.radius, cell1.radius, dist, overlap, factor
-    );
     Point3::<f32> {
         x: cell2.position.x + factor * (cell1.position.x - cell2.position.x),
         y: cell2.position.y + factor * (cell1.position.y - cell2.position.y),

@@ -82,7 +82,7 @@ impl Entity for BiologicalCell {
             *vol_mut = new_volume;
         }
 
-        println!("Cell {} at {:?}", self.entity_id(), self.position());
+        // println!("Cell {} at {:?}", self.entity_id(), self.position());
     }
 }
 
