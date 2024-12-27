@@ -1,5 +1,6 @@
 use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
 
+#[derive(Clone)]
 pub struct Plane<T> {
     pub pos: Vector3<T>,
     pub normal: Vector3<T>,

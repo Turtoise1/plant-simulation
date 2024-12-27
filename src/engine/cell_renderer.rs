@@ -1,5 +1,5 @@
 use super::{
-    delaunay::{CellInformation, TetGenResult, TetraederOfCells},
+    delaunay::{CellInformation, TetGenResult},
     vertex::Vertex,
 };
 use crate::{
@@ -12,6 +12,7 @@ use crate::{
 use cgmath::{InnerSpace, Point3, Vector3};
 use rand::random;
 use std::{
+    collections::HashMap,
     f32::consts::PI,
     sync::{Arc, Mutex},
 };
@@ -194,28 +195,35 @@ impl CellRenderer {
     fn create_intersection_planes_from_tet_gen_result(
         &self,
         tet_gen_result: &TetGenResult<f32>,
-    ) -> Vec<Plane<f32>> {
-        let mut planes: Vec<Plane<f32>> = vec![];
+    ) -> HashMap<u64, Plane<f32>> {
+        let mut planes = HashMap::<u64, Plane<f32>>::new();
         match tet_gen_result {
             TetGenResult::Success(tetraeders) => {
                 tetraeders.iter().for_each(|tetraeder| {
-                    planes.append(
-                        &mut self
-                            .create_intersection_planes_from_cell_information(tetraeder.nodes()),
-                    );
+                    let p_tet =
+                        self.create_intersection_planes_from_cell_information(tetraeder.nodes());
+                    p_tet.iter().for_each(|p| {
+                        planes.insert(p.0, p.1.clone());
+                    });
                 });
             }
             TetGenResult::TooFewCells(cells) => {
-                planes.append(&mut self.create_intersection_planes_from_cell_information(cells));
+                let p = self.create_intersection_planes_from_cell_information(cells);
+                p.iter().for_each(|p| {
+                    planes.insert(p.0, p.1.clone());
+                });
             }
         }
         planes
     }
 
+    /// returns a vector that contains for each of the input cells that intersects with self
+    /// - the id of the other cell
+    /// - a plane dividing self and the other cell in a good way
     fn create_intersection_planes_from_cell_information(
         &self,
         cells: &[CellInformation<f32>],
-    ) -> Vec<Plane<f32>> {
+    ) -> Vec<(u64, Plane<f32>)> {
         let mut planes = vec![];
         let intersecting_cells: Vec<&CellInformation<f32>> = cells
             .iter()
@@ -223,7 +231,7 @@ impl CellRenderer {
             .filter(|c| intersect(&self, &c))
             .collect();
         intersecting_cells.iter().for_each(|cell| {
-            planes.push(self.get_intersection_plane_one_other(cell));
+            planes.push((cell.id, self.get_intersection_plane_one_other(cell)));
         });
         planes
     }
@@ -257,9 +265,13 @@ impl CellRenderer {
     /// look at the planes that divide this cell from near neighbours
     /// if the vertex is on the same side as the center, keep it
     /// else move it to the plane
-    fn get_rid_of_intersections(&self, vertex: Vertex, planes: &Vec<Plane<f32>>) -> Vertex {
+    fn get_rid_of_intersections(
+        &self,
+        vertex: Vertex,
+        planes: &HashMap<u64, Plane<f32>>,
+    ) -> Vertex {
         let mut vertex = vertex;
-        planes.iter().for_each(|plane| {
+        planes.values().for_each(|plane| {
             let class_cell = point_vs_plane(&self.position, plane);
             let class_vertex = point_vs_plane(&vertex.position.into(), plane);
             if class_cell != class_vertex
