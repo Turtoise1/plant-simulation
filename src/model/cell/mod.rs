@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     model::entity::{generate_id, Entity},
-    shared::cell::{BiologicalCellEvent, CellEvent, EventSystem},
+    shared::cell::{CellEvent, EventSystem},
 };
 
 pub const SIZE_THRESHOLD: f32 = 20.;
@@ -55,11 +55,6 @@ impl BiologicalCell {
         self.volume
             .read()
             .expect("Failed to get position from cell!")
-    }
-
-    pub fn update_position(&mut self, position: &Point3<f32>) {
-        let event = CellEvent::FromBio(BiologicalCellEvent::UpdatePosition(position.clone()));
-        self.events.notify(&event);
     }
 }
 

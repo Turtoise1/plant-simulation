@@ -1,6 +1,7 @@
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, RwLock},
+    thread::{self, Thread},
 };
 
 use crate::{
@@ -32,7 +33,8 @@ impl Cell {
         )));
         let bio_clone = Arc::clone(&bio);
         let renderer_clone = Arc::clone(&renderer);
-        Cell::handle_events(Arc::clone(&events), bio_clone, renderer_clone);
+        let events_clone = Arc::clone(&events);
+        Cell::handle_events(events_clone, bio_clone, renderer_clone);
         Self {
             bio,
             renderer,
@@ -45,19 +47,21 @@ impl Cell {
         bio: Arc<RwLock<BiologicalCell>>,
         renderer: Arc<RwLock<CellRenderer>>,
     ) {
-        events.subscribe(Box::new(move |e| match e {
-            CellEvent::FromBio(e) => match e {
-                BiologicalCellEvent::UpdatePosition(new_pos) => {
-                    renderer.write().unwrap().position = *new_pos;
+        events.subscribe(Box::new(move |event| {
+            let cell_id = {
+                let bio = bio.read().unwrap();
+                bio.entity_id()
+            };
+            if event.id == cell_id {
+                match event.event_type {
+                    CellEventType::UpdatePosition(new_pos) => {
+                        renderer.write().unwrap().position = new_pos;
+                        let bio = bio.write().unwrap();
+                        let mut pos = bio.position.write().unwrap();
+                        *pos = new_pos;
+                    }
                 }
-            },
-            CellEvent::FromRenderer(e) => match e {
-                CellRendererEvent::UpdatePosition(new_pos) => {
-                    let bio = bio.write().unwrap();
-                    let mut pos = bio.position.write().unwrap();
-                    *pos = *new_pos;
-                }
-            },
+            }
         }));
     }
 }
@@ -94,15 +98,14 @@ impl EventSystem {
     }
 }
 
-pub enum CellEvent {
-    FromBio(BiologicalCellEvent),
-    FromRenderer(CellRendererEvent),
+pub struct CellEvent {
+    /// The id of the cell that should be updated.
+    pub id: u64,
+    /// The type of the cell event and potentially data.
+    pub event_type: CellEventType,
 }
 
-pub enum BiologicalCellEvent {
-    UpdatePosition(Point3<f32>),
-}
-
-pub enum CellRendererEvent {
+pub enum CellEventType {
+    /// The position of a cell will be updated to the given f32.
     UpdatePosition(Point3<f32>),
 }
