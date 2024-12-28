@@ -1,9 +1,19 @@
+use std::iter::Sum;
+
 use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
 
 #[derive(Clone)]
 pub struct Plane<T> {
     pub pos: Vector3<T>,
     pub normal: Vector3<T>,
+}
+
+pub fn distance<T: BaseFloat + Sum>(point1: &Point3<T>, point2: &Point3<T>) -> T {
+    T::sqrt(
+        (0..3) // includes 0, excludes 3
+            .map(|xyz| T::powi(point2[xyz] - point1[xyz], 2))
+            .sum(),
+    )
 }
 
 pub fn signed_distance<T: BaseFloat>(point: &Point3<T>, plane: &Plane<T>) -> T {

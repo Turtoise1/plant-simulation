@@ -1,8 +1,12 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::{
+    sync::{Arc, Mutex, RwLock},
+    thread::{self},
+    time::Duration,
+};
 
 use camera::CameraController;
 use cell_renderer::Size;
-use delaunay::delaunay_triangulation;
+use delaunay::{delaunay_triangulation, get_near_cells};
 use futures::executor::block_on;
 use state::ApplicationState;
 use winit::{
@@ -12,7 +16,13 @@ use winit::{
     window::Window,
 };
 
-use crate::{model::entity::Entity, shared::cell::Cell, SimulationEvent};
+use crate::{
+    shared::{
+        self,
+        cell::{Cell, CellInformation},
+    },
+    SimulationEvent,
+};
 
 mod camera;
 pub mod cell_renderer;
@@ -46,29 +56,30 @@ impl<'w> Simulation<'w> {
 
     pub fn update(&mut self) {
         {
-            let tet_result;
+            let tet_gen_result;
             {
-                let cells_read_guard = self.cells.read().unwrap();
-                tet_result = match delaunay_triangulation(&cells_read_guard) {
+                let cells = self.cells.read().unwrap();
+                tet_gen_result = match delaunay_triangulation(&cells) {
                     Ok(res) => res,
                     Err(err) => panic!("An error occured in the delaunay triangulation!\n{}", err),
                 };
             }
-            let mut cells_write_guard = self.cells.write().unwrap();
-            for cell in cells_write_guard.iter_mut() {
-                {
-                    let mut bio_write_guard = cell.bio.write().unwrap();
-                    bio_write_guard.update();
-                }
-                {
-                    let bio_read_guard = cell.bio.read().unwrap();
-                    let mut renderer_write_guard = cell.renderer.write().unwrap();
-                    renderer_write_guard.update(
-                        Size::FromVolume(bio_read_guard.volume().clone()),
-                        LEVEL_OF_DETAIL,
-                        &tet_result,
-                    );
-                }
+            let cells = self.cells.write().unwrap();
+            for cell in cells.iter() {
+                let near_cells = get_near_cells(&cell.clone().into(), &tet_gen_result);
+                let bio = cell.bio.write().unwrap();
+                bio.update(&near_cells);
+            }
+            thread::sleep(Duration::from_millis(100));
+            for cell in cells.iter() {
+                let near_cells = get_near_cells(&cell.clone().into(), &tet_gen_result);
+                let bio = cell.bio.read().unwrap();
+                let mut renderer = cell.renderer.write().unwrap();
+                renderer.update(
+                    Size::FromVolume(bio.volume().clone()),
+                    LEVEL_OF_DETAIL,
+                    &near_cells,
+                );
             }
         }
         match &self.state {

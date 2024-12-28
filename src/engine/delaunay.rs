@@ -1,26 +1,12 @@
-use crate::{model::entity::Entity, shared::cell::Cell};
+use crate::{
+    model::entity::Entity,
+    shared::cell::{near, Cell, CellInformation},
+};
 use cgmath::{BaseFloat, Point3};
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 use tritet::{StrError, Tetgen};
 
-use super::cell_renderer::{radius_from_volume, CellRenderer};
-
-#[derive(Clone, Debug)]
-pub struct CellInformation<T: BaseFloat> {
-    pub id: u64,
-    pub position: Point3<T>,
-    pub radius: T,
-}
-
-impl From<CellRenderer> for CellInformation<f32> {
-    fn from(value: CellRenderer) -> Self {
-        Self {
-            id: value.cell_id,
-            position: value.position().clone(),
-            radius: value.radius,
-        }
-    }
-}
+use super::cell_renderer::radius_from_volume;
 
 #[derive(Clone, Debug)]
 pub struct TetraederOfCells<T: BaseFloat> {
@@ -70,9 +56,10 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
             .iter()
             .map(|c| {
                 let renderer = c.renderer.read().unwrap();
+                let position = renderer.position().clone();
                 CellInformation::<f32> {
                     id: renderer.cell_id,
-                    position: renderer.position().clone(),
+                    position,
                     radius: renderer.radius,
                 }
             })
@@ -107,4 +94,42 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
         tetraeders.push(TetraederOfCells::new(out.try_into().unwrap()));
     }
     Ok(TetGenResult::Success(tetraeders))
+}
+
+/// If the tetraeder generation was successful:
+/// For each tetraeder where self is included, all other cells are returned.
+///
+/// If no tetraeders have been generated:
+/// All other cells where the distance is smaller than the sum of their radi are returned.
+pub fn get_near_cells(
+    cell: &CellInformation<f32>,
+    tet_gen_result: &TetGenResult<f32>,
+) -> HashMap<u64, CellInformation<f32>> {
+    let mut near_cells = HashMap::<u64, CellInformation<f32>>::new();
+    match tet_gen_result {
+        TetGenResult::Success(tetraeders) => {
+            tetraeders
+                .iter()
+                .filter(|t| t.nodes().iter().any(|other| other.id == cell.id))
+                .for_each(|tetraeder| {
+                    tetraeder
+                        .nodes()
+                        .iter()
+                        .filter(|other| other.id != cell.id)
+                        .for_each(|other| {
+                            near_cells.insert(other.id, other.clone());
+                        });
+                });
+        }
+        TetGenResult::TooFewCells(result_cells) => {
+            result_cells
+                .iter()
+                .filter(|other| other.id != cell.id)
+                .filter(|other| near(&cell.position, cell.radius, &other.position, other.radius))
+                .for_each(|other| {
+                    near_cells.insert(other.id, other.clone());
+                });
+        }
+    }
+    near_cells
 }

@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
-    io::Write,
     sync::{
         mpsc::{channel, Sender},
         Arc, Mutex, RwLock,
@@ -10,12 +9,48 @@ use std::{
 };
 
 use crate::{
-    engine::cell_renderer::CellRenderer,
+    engine::cell_renderer::{radius_from_volume, CellRenderer},
     model::{cell::BiologicalCell, entity::Entity},
 };
-use cgmath::Point3;
+use cgmath::{BaseFloat, Point3};
 
-#[derive(Debug)]
+use super::plane::distance;
+
+#[derive(Clone, Debug)]
+pub struct CellInformation<T: BaseFloat> {
+    pub id: u64,
+    pub position: Point3<T>,
+    pub radius: T,
+}
+
+impl From<BiologicalCell> for CellInformation<f32> {
+    fn from(value: BiologicalCell) -> Self {
+        Self {
+            id: value.entity_id(),
+            position: value.position().clone(),
+            radius: radius_from_volume(&value.volume()),
+        }
+    }
+}
+
+impl From<CellRenderer> for CellInformation<f32> {
+    fn from(value: CellRenderer) -> Self {
+        Self {
+            id: value.cell_id,
+            position: value.position().clone(),
+            radius: value.radius,
+        }
+    }
+}
+
+impl From<Cell> for CellInformation<f32> {
+    fn from(value: Cell) -> Self {
+        let renderer = value.renderer.read().unwrap().clone();
+        renderer.into()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Cell {
     pub bio: Arc<RwLock<BiologicalCell>>,
     pub renderer: Arc<RwLock<CellRenderer>>,
@@ -35,39 +70,17 @@ impl Cell {
             bio.read().unwrap().entity_id(),
             Arc::clone(&events),
         )));
-        let bio_clone = Arc::clone(&bio);
-        let renderer_clone = Arc::clone(&renderer);
-        let events_clone = Arc::clone(&events);
-        Cell::handle_events(events_clone, bio_clone, renderer_clone);
         Self {
             bio,
             renderer,
             events,
         }
     }
+}
 
-    fn handle_events(
-        events: Arc<EventSystem>,
-        bio: Arc<RwLock<BiologicalCell>>,
-        renderer: Arc<RwLock<CellRenderer>>,
-    ) {
-        let cell_id = {
-            let bio = bio.read().unwrap();
-            bio.entity_id()
-        };
-        events.subscribe(cell_id, move |event| {
-            if event.id == cell_id {
-                match event.event_type {
-                    CellEventType::UpdatePosition(new_pos) => {
-                        renderer.write().unwrap().position = new_pos;
-                        let bio = bio.write().unwrap();
-                        let mut pos = bio.position.write().unwrap();
-                        *pos = new_pos;
-                    }
-                }
-            };
-        });
-    }
+pub fn near(pos1: &Point3<f32>, radius1: f32, pos2: &Point3<f32>, radius2: f32) -> bool {
+    let dist = distance(pos1, pos2);
+    dist < radius1 + radius2
 }
 
 pub struct EventSystem {

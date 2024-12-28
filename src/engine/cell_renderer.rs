@@ -1,18 +1,19 @@
-use super::{
-    delaunay::{CellInformation, TetGenResult},
-    vertex::Vertex,
-};
+use super::vertex::Vertex;
 use crate::shared::{
-    cell::{CellEvent, CellEventType, EventSystem},
-    plane::{point_vs_plane, signed_distance, Classification, Plane},
+    cell::{CellEventType, CellInformation, EventSystem},
+    plane::{distance, point_vs_plane, signed_distance, Classification, Plane},
 };
 use cgmath::{InnerSpace, Point3, Vector3};
-use std::{collections::HashMap, f32::consts::PI, sync::Arc};
+use std::{
+    collections::HashMap,
+    f32::consts::PI,
+    sync::{Arc, RwLock, RwLockReadGuard},
+};
 
 #[derive(Clone, Debug)]
 pub struct CellRenderer {
     pub radius: f32,
-    pub position: Point3<f32>,
+    position: Arc<RwLock<Point3<f32>>>,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
     pub cell_id: u64,
@@ -28,20 +29,44 @@ impl CellRenderer {
     pub fn new(position: &Point3<f32>, volume: &f32, id: u64, events: Arc<EventSystem>) -> Self {
         let renderer = CellRenderer {
             radius: radius_from_volume(volume),
-            position: position.clone(),
+            position: Arc::new(RwLock::new(position.clone())),
             vertices: Vec::new(),
             indices: Vec::new(),
             cell_id: id,
             events,
         };
+        renderer.handle_events();
         renderer
     }
 
-    pub fn position(&self) -> &Point3<f32> {
-        &self.position
+    pub fn position(&self) -> RwLockReadGuard<Point3<f32>> {
+        self.position.read().unwrap()
     }
 
-    pub fn update(&mut self, new_size: Size, lod: u16, tet_gen_result: &TetGenResult<f32>) {
+    pub fn position_clone(&self) -> Point3<f32> {
+        self.position.read().unwrap().clone()
+    }
+
+    fn handle_events(&self) {
+        let pos = Arc::clone(&self.position);
+        let id = self.cell_id;
+        self.events.subscribe(id, move |event| {
+            if event.id == id {
+                match event.event_type {
+                    CellEventType::UpdatePosition(new_pos) => {
+                        *pos.write().unwrap() = new_pos;
+                    }
+                }
+            };
+        });
+    }
+
+    pub fn update(
+        &mut self,
+        new_size: Size,
+        lod: u16,
+        near_cells: &HashMap<u64, CellInformation<f32>>,
+    ) {
         self.vertices = Vec::new();
         self.indices = Vec::new();
 
@@ -56,7 +81,6 @@ impl CellRenderer {
         let sector_step = 2.0 * PI / sector_count as f32;
         let stack_step = PI / stack_count as f32;
 
-        let near_cells = self.get_near_cells(tet_gen_result);
         let mut planes = vec![];
         near_cells.values().for_each(|c| {
             let plane = self.try_create_intersection_plane(c);
@@ -64,7 +88,7 @@ impl CellRenderer {
                 planes.push(plane.unwrap());
             }
         });
-        self.reposition(near_cells);
+        let pos = self.position_clone();
 
         for i in 0..=stack_count {
             let stack_angle = PI / 2.0 - i as f32 * stack_step;
@@ -77,11 +101,7 @@ impl CellRenderer {
                 let y = xy * sector_angle.sin();
 
                 let vertex = Vertex {
-                    position: [
-                        x + self.position.x,
-                        y + self.position.y,
-                        z + self.position.z,
-                    ],
+                    position: [x + pos.x, y + pos.y, z + pos.z],
                     color: [1., 1., 1.],
                 };
 
@@ -107,112 +127,6 @@ impl CellRenderer {
         }
     }
 
-    /// move self and near cells away from each other depending on their volumes
-    /// the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts
-    fn reposition(&mut self, near_cells: HashMap<u64, CellInformation<f32>>) {
-        near_cells.values().for_each(|other_cell| {
-            let other_radius = other_cell.radius;
-            let min_dist = f32::max(self.radius, other_radius);
-            if distance(&self.position, &other_cell.position) < min_dist {
-                self.push_away(other_cell, min_dist);
-            }
-        });
-    }
-
-    /// move self and other_cell away from each other depending on their volume
-    /// returns the new position of the cell which has not been set yet.
-    fn push_away(&mut self, other_cell: &CellInformation<f32>, to_dist: f32) {
-        let p1 = &self.position;
-        let w1 = &self.radius;
-        let p2 = &other_cell.position;
-        let w2 = &other_cell.radius;
-
-        // Step 1: Compute the vector between the points
-        let direction = Point3::<f32> {
-            x: p2.x - p1.x,
-            y: p2.y - p1.y,
-            z: p2.z - p1.z,
-        };
-
-        // Step 2: Compute the current distance
-        let length = (direction.x.powi(2) + direction.y.powi(2) + direction.z.powi(2)).sqrt();
-
-        // Normalize the direction vector
-        let direction_normalized = Point3::<f32> {
-            x: direction.x / length,
-            y: direction.y / length,
-            z: direction.z / length,
-        };
-
-        // Step 3: Determine how much each position should move based on the weights
-        let w_total = w1 + w2;
-        let factor1 = w2 / w_total; // p1's movement factor
-        let factor2 = w1 / w_total; // p2's movement factor
-
-        // Step 4: Compute the displacement needed to reach the target distance
-        let displacement = to_dist - length;
-
-        let position = Point3::<f32> {
-            x: other_cell.position.x + direction_normalized.x * displacement * factor2,
-            y: other_cell.position.y + direction_normalized.y * displacement * factor2,
-            z: other_cell.position.z + direction_normalized.z * displacement * factor2,
-        };
-        let event = CellEvent {
-            id: other_cell.id,
-            event_type: CellEventType::UpdatePosition(position),
-        };
-        self.events.notify(Arc::new(event));
-
-        let position = Point3::<f32> {
-            x: self.position().x + direction_normalized.x * displacement * factor1,
-            y: self.position().y + direction_normalized.y * displacement * factor1,
-            z: self.position().z + direction_normalized.z * displacement * factor1,
-        };
-        let event = CellEvent {
-            id: self.cell_id,
-            event_type: CellEventType::UpdatePosition(position),
-        };
-        self.events.notify(Arc::new(event));
-    }
-
-    /// If the tetraeder generation was successful:
-    /// For each tetraeder where self is included, all other cells are returned.
-    ///
-    /// If no tetraeders have been generated:
-    /// All other cells where the distance is smaller than the sum of their radi are returned.
-    fn get_near_cells(
-        &self,
-        tet_gen_result: &TetGenResult<f32>,
-    ) -> HashMap<u64, CellInformation<f32>> {
-        let mut near_cells = HashMap::<u64, CellInformation<f32>>::new();
-        match tet_gen_result {
-            TetGenResult::Success(tetraeders) => {
-                tetraeders
-                    .iter()
-                    .filter(|t| t.nodes().iter().any(|c| c.id == self.cell_id))
-                    .for_each(|tetraeder| {
-                        tetraeder
-                            .nodes()
-                            .iter()
-                            .filter(|c| c.id != self.cell_id)
-                            .for_each(|c| {
-                                near_cells.insert(c.id, c.clone());
-                            });
-                    });
-            }
-            TetGenResult::TooFewCells(result_cells) => {
-                result_cells
-                    .iter()
-                    .filter(|c| c.id != self.cell_id)
-                    .filter(|c| near(&self, &c))
-                    .for_each(|c| {
-                        near_cells.insert(c.id, c.clone());
-                    });
-            }
-        }
-        near_cells
-    }
-
     /// Returns None if other is the same as self or the two cells do not overlap
     /// Returns Some(plane) otherwise where plane divides the two cellsin a good way
     fn try_create_intersection_plane(&self, other: &CellInformation<f32>) -> Option<Plane<f32>> {
@@ -228,10 +142,10 @@ impl CellRenderer {
     /// expects that this cell and the given other cell intersect
     /// returns a plain that separates both cells fairly
     fn create_intersection_plane(&self, other: &CellInformation<f32>) -> Plane<f32> {
-        let p1 = self.position();
+        let p1 = self.position_clone();
         let self_as_ci = CellInformation {
             id: self.cell_id,
-            position: self.position,
+            position: self.position().clone(),
             radius: self.radius,
         };
         let middle = between_depending_on_radius(&self_as_ci, other);
@@ -257,7 +171,7 @@ impl CellRenderer {
     fn get_rid_of_intersections(&self, vertex: Vertex, planes: &Vec<Plane<f32>>) -> Vertex {
         let mut vertex = vertex;
         planes.iter().for_each(|plane| {
-            let class_cell = point_vs_plane(&self.position, plane);
+            let class_cell = point_vs_plane(&self.position(), plane);
             let class_vertex = point_vs_plane(&vertex.position.into(), plane);
             if class_cell != class_vertex
                 && class_cell != Classification::Intersects
@@ -314,21 +228,8 @@ fn between_depending_on_radius(
     }
 }
 
-fn distance(point1: &Point3<f32>, point2: &Point3<f32>) -> f32 {
-    f32::sqrt(
-        (0..3) // includes 0, excludes 3
-            .map(|xyz| f32::powi(point2[xyz] - point1[xyz], 2))
-            .sum(),
-    )
-}
-
-fn near(cell1: &CellRenderer, cell2: &CellInformation<f32>) -> bool {
-    let dist = distance(cell1.position(), &cell2.position);
-    dist < cell1.radius + cell2.radius
-}
-
 /// returns whether the cells positions are further away from each other than sum of the radiuses
 fn intersect(cell1: &CellRenderer, cell2: &CellInformation<f32>) -> bool {
     let min_distance = cell1.radius + cell2.radius;
-    distance(&cell1.position, &cell2.position) < min_distance
+    distance(&cell1.position(), &cell2.position) < min_distance
 }
