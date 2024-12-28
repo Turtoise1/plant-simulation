@@ -35,7 +35,7 @@ impl BiologicalCell {
             time_lived: AtomicU32::new(0),
             growth_factors: GrowthFactors {
                 size_threshold: SIZE_THRESHOLD,
-                growth_factor: 0.0002,
+                growth_factor: 0.0005,
                 start_value: volume,
             },
             position: Arc::new(RwLock::new(position.clone())),

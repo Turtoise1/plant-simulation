@@ -1,8 +1,8 @@
-use std::{thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 
 use cgmath::Point3;
 use engine::Simulation;
-use shared::cell::Cell;
+use shared::cell::{Cell, EventSystem};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod engine;
@@ -14,6 +14,7 @@ enum SimulationEvent {
 }
 
 fn main() {
+    let events = Arc::new(EventSystem::new());
     let cells = vec![
         Cell::new(
             Point3 {
@@ -22,6 +23,7 @@ fn main() {
                 z: 0.,
             },
             1.,
+            Arc::clone(&events),
         ),
         Cell::new(
             Point3 {
@@ -30,6 +32,7 @@ fn main() {
                 z: 0.,
             },
             1.,
+            Arc::clone(&events),
         ),
         Cell::new(
             Point3 {
@@ -38,6 +41,7 @@ fn main() {
                 z: 0.,
             },
             1.,
+            Arc::clone(&events),
         ),
         Cell::new(
             Point3 {
@@ -46,6 +50,7 @@ fn main() {
                 z: 0.,
             },
             1.,
+            Arc::clone(&events),
         ),
         Cell::new(
             Point3 {
@@ -54,6 +59,7 @@ fn main() {
                 z: 0.,
             },
             1.,
+            Arc::clone(&events),
         ),
         Cell::new(
             Point3 {
@@ -62,6 +68,7 @@ fn main() {
                 z: -1.,
             },
             1.,
+            Arc::clone(&events),
         ),
         Cell::new(
             Point3 {
@@ -70,6 +77,7 @@ fn main() {
                 z: 1.,
             },
             1.,
+            Arc::clone(&events),
         ),
     ];
 

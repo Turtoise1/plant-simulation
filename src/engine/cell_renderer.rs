@@ -2,19 +2,12 @@ use super::{
     delaunay::{CellInformation, TetGenResult},
     vertex::Vertex,
 };
-use crate::{
-    model::cell::BiologicalCell,
-    shared::{
-        cell::{CellEvent, CellEventType, EventSystem},
-        plane::{point_vs_plane, signed_distance, Classification, Plane},
-    },
+use crate::shared::{
+    cell::{CellEvent, CellEventType, EventSystem},
+    plane::{point_vs_plane, signed_distance, Classification, Plane},
 };
 use cgmath::{InnerSpace, Point3, Vector3};
-use std::{
-    collections::HashMap,
-    f32::consts::PI,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, f32::consts::PI, sync::Arc};
 
 #[derive(Clone, Debug)]
 pub struct CellRenderer {
@@ -71,7 +64,7 @@ impl CellRenderer {
                 planes.push(plane.unwrap());
             }
         });
-        // self.reposition(near_cells);
+        self.reposition(near_cells);
 
         for i in 0..=stack_count {
             let stack_angle = PI / 2.0 - i as f32 * stack_step;
@@ -119,8 +112,7 @@ impl CellRenderer {
     fn reposition(&mut self, near_cells: HashMap<u64, CellInformation<f32>>) {
         near_cells.values().for_each(|other_cell| {
             let other_radius = other_cell.radius;
-            let min_dist = f32::max(self.radius, other_radius) // this value would make sense
-                + f32::min(1., f32::min(self.radius, other_radius)); // but let's add this value because the algorithm does not work otherwise
+            let min_dist = f32::max(self.radius, other_radius);
             if distance(&self.position, &other_cell.position) < min_dist {
                 self.push_away(other_cell, min_dist);
             }
@@ -161,33 +153,33 @@ impl CellRenderer {
         let displacement = to_dist - length;
 
         let position = Point3::<f32> {
-            x: other_cell.position.x - direction_normalized.x * displacement * factor2,
-            y: other_cell.position.y - direction_normalized.y * displacement * factor2,
-            z: other_cell.position.z - direction_normalized.z * displacement * factor2,
+            x: other_cell.position.x + direction_normalized.x * displacement * factor2,
+            y: other_cell.position.y + direction_normalized.y * displacement * factor2,
+            z: other_cell.position.z + direction_normalized.z * displacement * factor2,
         };
         let event = CellEvent {
             id: other_cell.id,
             event_type: CellEventType::UpdatePosition(position),
         };
-        self.events.notify(&event);
+        self.events.notify(Arc::new(event));
 
         let position = Point3::<f32> {
-            x: self.position().x - direction_normalized.x * displacement * factor1,
-            y: self.position().y - direction_normalized.y * displacement * factor1,
-            z: self.position().z - direction_normalized.z * displacement * factor1,
+            x: self.position().x + direction_normalized.x * displacement * factor1,
+            y: self.position().y + direction_normalized.y * displacement * factor1,
+            z: self.position().z + direction_normalized.z * displacement * factor1,
         };
         let event = CellEvent {
             id: self.cell_id,
             event_type: CellEventType::UpdatePosition(position),
         };
-        self.events.notify(&event);
+        self.events.notify(Arc::new(event));
     }
 
     /// If the tetraeder generation was successful:
     /// For each tetraeder where self is included, all other cells are returned.
     ///
     /// If no tetraeders have been generated:
-    /// All cells where the distance is smaller than the sum of their radi are returned.
+    /// All other cells where the distance is smaller than the sum of their radi are returned.
     fn get_near_cells(
         &self,
         tet_gen_result: &TetGenResult<f32>,
@@ -199,14 +191,19 @@ impl CellRenderer {
                     .iter()
                     .filter(|t| t.nodes().iter().any(|c| c.id == self.cell_id))
                     .for_each(|tetraeder| {
-                        tetraeder.nodes().iter().for_each(|c| {
-                            near_cells.insert(c.id, c.clone());
-                        });
+                        tetraeder
+                            .nodes()
+                            .iter()
+                            .filter(|c| c.id != self.cell_id)
+                            .for_each(|c| {
+                                near_cells.insert(c.id, c.clone());
+                            });
                     });
             }
             TetGenResult::TooFewCells(result_cells) => {
                 result_cells
                     .iter()
+                    .filter(|c| c.id != self.cell_id)
                     .filter(|c| near(&self, &c))
                     .for_each(|c| {
                         near_cells.insert(c.id, c.clone());
