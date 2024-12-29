@@ -1,4 +1,4 @@
-use cgmath::Point3;
+use cgmath::{InnerSpace, Point3, Vector3};
 use std::{
     collections::HashMap,
     f32::consts::E,
@@ -10,7 +10,7 @@ use crate::{
     model::entity::{generate_id, Entity},
     shared::{
         cell::{CellEvent, CellEventType, CellInformation, EventSystem},
-        plane::distance,
+        plane::{distance, mean},
     },
 };
 
@@ -57,6 +57,10 @@ impl BiologicalCell {
             .expect("Failed to get position from cell!")
     }
 
+    pub fn position_clone(&self) -> Point3<f32> {
+        self.position().clone()
+    }
+
     pub fn volume(&self) -> RwLockReadGuard<f32> {
         self.volume
             .read()
@@ -96,72 +100,50 @@ impl BiologicalCell {
         // println!("Cell {} at {:?}", self.entity_id(), self.position());
     }
 
-    /// move self and near cells away from each other depending on their volumes
-    /// the goal is to achieve that no cells radius overlaps the core position of another cell, only outer parts
+    /// move self away from near cells
     fn reposition(&self, near_cells: &HashMap<u64, CellInformation<f32>>) {
-        near_cells.values().for_each(|other_cell| {
-            let other_radius = other_cell.radius;
-            let min_dist = f32::max(radius_from_volume(&self.volume()), other_radius);
-            if distance(&self.position(), &other_cell.position) < min_dist {
-                self.push_away(other_cell, min_dist);
-            }
-        });
+        let mut positions = vec![];
+        near_cells
+            .values()
+            .filter(|other| {
+                distance(&self.position_clone(), &other.position)
+                    < f32::max(radius_from_volume(&self.volume()), other.radius)
+            })
+            .for_each(|near| {
+                positions.push(self.get_point_away_from(near));
+            });
+        if positions.len() > 0 {
+            let event = CellEvent {
+                id: self.entity_id(),
+                event_type: CellEventType::UpdatePosition(mean(&positions)),
+            };
+            self.events.notify(Arc::new(event));
+        }
     }
 
-    /// move self and other_cell away from each other depending on their volume
-    /// returns the new position of the cell which has not been set yet.
-    fn push_away(&self, other_cell: &CellInformation<f32>, to_dist: f32) {
-        let p1 = &self.position();
-        let w1 = radius_from_volume(&self.volume());
-        let p2 = &other_cell.position;
-        let w2 = &other_cell.radius;
+    /// finds a point away from the other cell and returns it
+    fn get_point_away_from(&self, from: &CellInformation<f32>) -> Point3<f32> {
+        let p1 = &self.position_clone();
+        let p2 = &from.position;
+        let r1 = radius_from_volume(&self.volume());
+        let r2 = from.radius;
 
-        // Step 1: Compute the vector between the points
-        let direction = Point3::<f32> {
-            x: p2.x - p1.x,
-            y: p2.y - p1.y,
-            z: p2.z - p1.z,
-        };
+        let direction = Vector3::<f32> {
+            x: p1.x - p2.x,
+            y: p1.y - p2.y,
+            z: p1.z - p2.z,
+        }
+        .normalize();
 
-        // Step 2: Compute the current distance
-        let length = (direction.x.powi(2) + direction.y.powi(2) + direction.z.powi(2)).sqrt();
-
-        // Normalize the direction vector
-        let direction_normalized = Point3::<f32> {
-            x: direction.x / length,
-            y: direction.y / length,
-            z: direction.z / length,
-        };
-
-        // Step 3: Determine how much each position should move based on the weights
-        let w_total = w1 + w2;
-        let factor1 = w2 / w_total; // p1's movement factor
-        let factor2 = w1 / w_total; // p2's movement factor
-
-        // Step 4: Compute the displacement needed to reach the target distance
-        let displacement = to_dist - length;
-
-        let position = Point3::<f32> {
-            x: p2.x + direction_normalized.x * displacement * factor2,
-            y: p2.y + direction_normalized.y * displacement * factor2,
-            z: p2.z + direction_normalized.z * displacement * factor2,
-        };
-        let event = CellEvent {
-            id: other_cell.id,
-            event_type: CellEventType::UpdatePosition(position),
-        };
-        self.events.notify(Arc::new(event));
-
-        let position = Point3::<f32> {
-            x: p1.x + direction_normalized.x * displacement * factor1,
-            y: p1.y + direction_normalized.y * displacement * factor1,
-            z: p1.z + direction_normalized.z * displacement * factor1,
-        };
-        let event = CellEvent {
-            id: self.entity_id(),
-            event_type: CellEventType::UpdatePosition(position),
-        };
-        self.events.notify(Arc::new(event));
+        let current_dist = distance(p1, p2);
+        let to_dist = f32::max(r1, r2);
+        let epsilon = 0.01;
+        let dist = to_dist - current_dist + epsilon;
+        Point3::<f32> {
+            x: p1.x + direction.x * dist,
+            y: p1.y + direction.y * dist,
+            z: p1.z + direction.z * dist,
+        }
     }
 }
 

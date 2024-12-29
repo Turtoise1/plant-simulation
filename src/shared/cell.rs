@@ -84,7 +84,7 @@ pub fn near(pos1: &Point3<f32>, radius1: f32, pos2: &Point3<f32>, radius2: f32) 
 }
 
 pub struct EventSystem {
-    subscribers: Mutex<HashMap<u64, Sender<Arc<CellEvent>>>>,
+    subscribers: Mutex<HashMap<u64, RwLock<Vec<Sender<Arc<CellEvent>>>>>>,
 }
 
 impl Debug for EventSystem {
@@ -105,13 +105,22 @@ impl EventSystem {
     }
 
     /// subscribe to cell events to handle them.
-    /// The given id can be used to directly address this subscriber with a notification.
+    /// The given id can be used to directly address all subscribers registered under this id.
     pub fn subscribe<F>(&self, id: u64, handler: F)
     where
         F: Fn(Arc<CellEvent>) + Send + 'static,
     {
         let (sender, receiver) = channel();
-        self.subscribers.lock().unwrap().insert(id, sender);
+        {
+            let mut subscribers = self.subscribers.lock().unwrap();
+            let previous = subscribers.get(&id);
+            if previous.is_none() {
+                subscribers.insert(id, RwLock::new(vec![sender]));
+            } else {
+                let mut previous = previous.unwrap().write().unwrap();
+                previous.push(sender);
+            }
+        }
         thread::spawn(move || {
             for event in receiver {
                 handler(event);
@@ -124,15 +133,18 @@ impl EventSystem {
         let subscribers = self.subscribers.lock().unwrap();
         let sender = subscribers.get(&event.id);
         match sender {
-            Option::Some(sender) => {
-                let success = sender.send(Arc::clone(&event));
-                if success.is_err() {
-                    println!(
-                        "{:?} could not be sent! Error: {}",
-                        event,
-                        success.unwrap_err()
-                    );
-                }
+            Option::Some(senders) => {
+                let senders = senders.read().unwrap();
+                senders.iter().for_each(|sender| {
+                    let success = sender.send(Arc::clone(&event));
+                    if success.is_err() {
+                        println!(
+                            "{:?} could not be sent! Error: {}",
+                            event,
+                            success.unwrap_err()
+                        );
+                    }
+                });
             }
             None => {
                 println!(

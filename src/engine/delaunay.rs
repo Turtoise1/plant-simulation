@@ -68,8 +68,8 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
     }
     let mut tetgen = Tetgen::new(n_points, None, None, None)?;
     for (index, cell) in cells.iter().enumerate() {
-        let read_guard = cell.bio.read().unwrap();
-        let pos = read_guard.position();
+        let bio = cell.bio.read().unwrap();
+        let pos = bio.position_clone();
         tetgen.set_point(index, 0, pos.x as f64, pos.y as f64, pos.z as f64)?;
     }
     tetgen.generate_delaunay(false)?;

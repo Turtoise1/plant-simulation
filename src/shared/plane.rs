@@ -1,4 +1,4 @@
-use std::iter::Sum;
+use std::{i16, iter::Sum};
 
 use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
 
@@ -6,6 +6,26 @@ use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
 pub struct Plane<T> {
     pub pos: Vector3<T>,
     pub normal: Vector3<T>,
+}
+
+pub fn mean<T: BaseFloat + std::convert::From<i16>>(points: &Vec<Point3<T>>) -> Point3<T> {
+    if points.len() > i16::MAX as usize {
+        panic!("This method should not be used to calculate the mean for big vectors with a length of over 32767!");
+    }
+    let mut sum = Point3::<T> {
+        x: T::zero(),
+        y: T::zero(),
+        z: T::zero(),
+    };
+    points.iter().for_each(|p| {
+        sum.x += p.x;
+        sum.y += p.y;
+        sum.z += p.z;
+    });
+    let len = points.len() as i16;
+    let len: T = len.into();
+    sum /= len;
+    sum
 }
 
 pub fn distance<T: BaseFloat + Sum>(point1: &Point3<T>, point2: &Point3<T>) -> T {

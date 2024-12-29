@@ -150,6 +150,14 @@ impl CellRenderer {
         };
         let middle = between_depending_on_radius(&self_as_ci, other);
         let p2 = other.position;
+        // println!(
+        //     "P1:{:?}, P2:{:?}, R1:{}, R2:{}, Middle:{:?}",
+        //     self.position(),
+        //     other.position,
+        //     self.radius,
+        //     other.radius,
+        //     middle
+        // );
         let v_cell_to_cell = Vector3 {
             x: p2.x - p1.x,
             y: p2.y - p1.y,

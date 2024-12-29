@@ -1,8 +1,4 @@
-use std::{
-    sync::{Arc, Mutex, RwLock},
-    thread::{self},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex, RwLock};
 
 use camera::CameraController;
 use cell_renderer::Size;
@@ -16,13 +12,7 @@ use winit::{
     window::Window,
 };
 
-use crate::{
-    shared::{
-        self,
-        cell::{Cell, CellInformation},
-    },
-    SimulationEvent,
-};
+use crate::{shared::cell::Cell, SimulationEvent};
 
 mod camera;
 pub mod cell_renderer;
@@ -67,19 +57,19 @@ impl<'w> Simulation<'w> {
             let cells = self.cells.write().unwrap();
             for cell in cells.iter() {
                 let near_cells = get_near_cells(&cell.clone().into(), &tet_gen_result);
-                let bio = cell.bio.write().unwrap();
-                bio.update(&near_cells);
-            }
-            thread::sleep(Duration::from_millis(100));
-            for cell in cells.iter() {
-                let near_cells = get_near_cells(&cell.clone().into(), &tet_gen_result);
-                let bio = cell.bio.read().unwrap();
-                let mut renderer = cell.renderer.write().unwrap();
-                renderer.update(
-                    Size::FromVolume(bio.volume().clone()),
-                    LEVEL_OF_DETAIL,
-                    &near_cells,
-                );
+                {
+                    let bio = cell.bio.write().unwrap();
+                    bio.update(&near_cells);
+                }
+                {
+                    let bio = cell.bio.read().unwrap();
+                    let mut renderer = cell.renderer.write().unwrap();
+                    renderer.update(
+                        Size::FromVolume(bio.volume().clone()),
+                        LEVEL_OF_DETAIL,
+                        &near_cells,
+                    );
+                }
             }
         }
         match &self.state {
