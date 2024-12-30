@@ -12,7 +12,7 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub struct CellRenderer {
-    pub radius: f32,
+    radius: Arc<RwLock<f32>>,
     position: Arc<RwLock<Point3<f32>>>,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
@@ -20,15 +20,10 @@ pub struct CellRenderer {
     events: Arc<EventSystem>,
 }
 
-pub enum Size {
-    FromRadius(f32),
-    FromVolume(f32),
-}
-
 impl CellRenderer {
     pub fn new(position: &Point3<f32>, volume: &f32, id: u64, events: Arc<EventSystem>) -> Self {
         let renderer = CellRenderer {
-            radius: radius_from_volume(volume),
+            radius: Arc::new(RwLock::new(radius_from_volume(volume))),
             position: Arc::new(RwLock::new(position.clone())),
             vertices: Vec::new(),
             indices: Vec::new(),
@@ -47,8 +42,17 @@ impl CellRenderer {
         self.position.read().unwrap().clone()
     }
 
+    pub fn radius(&self) -> RwLockReadGuard<f32> {
+        self.radius.read().unwrap()
+    }
+
+    pub fn radius_clone(&self) -> f32 {
+        *self.radius.read().unwrap()
+    }
+
     fn handle_events(&self) {
         let pos = Arc::clone(&self.position);
+        let radius = Arc::clone(&self.radius);
         let id = self.cell_id;
         self.events.subscribe(id, move |event| {
             if event.id == id {
@@ -56,24 +60,17 @@ impl CellRenderer {
                     CellEventType::UpdatePosition(new_pos) => {
                         *pos.write().unwrap() = new_pos;
                     }
+                    CellEventType::UpdateVolume(new_volume) => {
+                        *radius.write().unwrap() = radius_from_volume(&new_volume);
+                    }
                 }
             };
         });
     }
 
-    pub fn update(
-        &mut self,
-        new_size: Size,
-        lod: u16,
-        near_cells: &HashMap<u64, CellInformation<f32>>,
-    ) {
+    pub fn update(&mut self, lod: u16, near_cells: &HashMap<u64, CellInformation<f32>>) {
         self.vertices = Vec::new();
         self.indices = Vec::new();
-
-        self.radius = match new_size {
-            Size::FromRadius(r) => r,
-            Size::FromVolume(v) => radius_from_volume(&v),
-        };
 
         let sector_count = lod * 2;
         let stack_count = lod;
@@ -89,11 +86,12 @@ impl CellRenderer {
             }
         });
         let pos = self.position_clone();
+        let radius = self.radius_clone();
 
         for i in 0..=stack_count {
             let stack_angle = PI / 2.0 - i as f32 * stack_step;
-            let xy = self.radius * stack_angle.cos();
-            let z = self.radius * stack_angle.sin();
+            let xy = radius * stack_angle.cos();
+            let z = radius * stack_angle.sin();
 
             for j in 0..=sector_count {
                 let sector_angle = j as f32 * sector_step;
@@ -145,8 +143,8 @@ impl CellRenderer {
         let p1 = self.position_clone();
         let self_as_ci = CellInformation {
             id: self.cell_id,
-            position: self.position().clone(),
-            radius: self.radius,
+            position: self.position_clone(),
+            radius: self.radius_clone(),
         };
         let middle = between_depending_on_radius(&self_as_ci, other);
         let p2 = other.position;
@@ -238,6 +236,6 @@ fn between_depending_on_radius(
 
 /// returns whether the cells positions are further away from each other than sum of the radiuses
 fn intersect(cell1: &CellRenderer, cell2: &CellInformation<f32>) -> bool {
-    let min_distance = cell1.radius + cell2.radius;
+    let min_distance = cell1.radius_clone() + cell2.radius;
     distance(&cell1.position(), &cell2.position) < min_distance
 }

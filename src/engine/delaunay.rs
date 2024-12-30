@@ -15,7 +15,7 @@ pub struct TetraederOfCells<T: BaseFloat> {
 
 pub enum TetGenResult<T: BaseFloat> {
     Success(Vec<TetraederOfCells<T>>),
-    TooFewCells(Vec<CellInformation<T>>),
+    NoTetGenPossible(Vec<CellInformation<T>>),
 }
 
 impl<T: BaseFloat> TetraederOfCells<T> {
@@ -60,11 +60,11 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
                 CellInformation::<f32> {
                     id: renderer.cell_id,
                     position,
-                    radius: renderer.radius,
+                    radius: renderer.radius_clone(),
                 }
             })
             .collect();
-        return Ok(TetGenResult::TooFewCells(information));
+        return Ok(TetGenResult::NoTetGenPossible(information));
     }
     let mut tetgen = Tetgen::new(n_points, None, None, None)?;
     for (index, cell) in cells.iter().enumerate() {
@@ -72,7 +72,29 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
         let pos = bio.position_clone();
         tetgen.set_point(index, 0, pos.x as f64, pos.y as f64, pos.z as f64)?;
     }
-    tetgen.generate_delaunay(false)?;
+    match tetgen.generate_delaunay(false) {
+        Ok(_) => {}
+        Err(err) => {
+            if err == "TetGen failed: points are probably coplanar" {
+                println!("Warn: Coplanar cell positions. TetGen not possible.");
+                let information: Vec<CellInformation<f32>> = cells
+                    .iter()
+                    .map(|c| {
+                        let renderer = c.renderer.read().unwrap();
+                        let position = renderer.position().clone();
+                        CellInformation::<f32> {
+                            id: renderer.cell_id,
+                            position,
+                            radius: renderer.radius_clone(),
+                        }
+                    })
+                    .collect();
+                return Ok(TetGenResult::NoTetGenPossible(information));
+            } else {
+                return Err(err);
+            }
+        }
+    };
     let mut tetraeders = vec![];
     for tetraeder_i in 0..tetgen.out_ncell() {
         let mut out = vec![];
@@ -121,7 +143,7 @@ pub fn get_near_cells(
                         });
                 });
         }
-        TetGenResult::TooFewCells(result_cells) => {
+        TetGenResult::NoTetGenPossible(result_cells) => {
             result_cells
                 .iter()
                 .filter(|other| other.id != cell.id)

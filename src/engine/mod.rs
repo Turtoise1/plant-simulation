@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock};
 
 use camera::CameraController;
-use cell_renderer::Size;
 use delaunay::{delaunay_triangulation, get_near_cells};
 use futures::executor::block_on;
 use state::ApplicationState;
@@ -62,13 +61,8 @@ impl<'w> Simulation<'w> {
                     bio.update(&near_cells);
                 }
                 {
-                    let bio = cell.bio.read().unwrap();
                     let mut renderer = cell.renderer.write().unwrap();
-                    renderer.update(
-                        Size::FromVolume(bio.volume().clone()),
-                        LEVEL_OF_DETAIL,
-                        &near_cells,
-                    );
+                    renderer.update(LEVEL_OF_DETAIL, &near_cells);
                 }
             }
         }

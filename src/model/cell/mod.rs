@@ -69,12 +69,16 @@ impl BiologicalCell {
 
     fn handle_events(&self) {
         let pos = Arc::clone(&self.position);
+        let volume = Arc::clone(&self.volume);
         let id = self.id;
         self.events.subscribe(id, move |event| {
             if event.id == id {
                 match event.event_type {
                     CellEventType::UpdatePosition(new_pos) => {
                         *pos.write().unwrap() = new_pos;
+                    }
+                    CellEventType::UpdateVolume(new_volume) => {
+                        *volume.write().unwrap() = new_volume;
                     }
                 }
             };
@@ -88,13 +92,11 @@ impl BiologicalCell {
         let new_volume = logistic_growth(self.growth_factors)(
             self.time_lived.load(std::sync::atomic::Ordering::Relaxed),
         );
-        {
-            let mut vol_mut = self
-                .volume
-                .write()
-                .expect("Failed to update volume of cell!");
-            *vol_mut = new_volume;
-        }
+        let event = CellEvent {
+            id: self.entity_id(),
+            event_type: CellEventType::UpdateVolume(new_volume),
+        };
+        self.events.notify(Arc::new(event));
 
         self.reposition(near_cells);
         // println!("Cell {} at {:?}", self.entity_id(), self.position());
