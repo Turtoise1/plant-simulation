@@ -137,8 +137,7 @@ impl BiologicalCell {
 
         let current_dist = distance(p1, p2);
         let to_dist = f32::max(r1, r2);
-        let epsilon = 0.01;
-        let dist = to_dist - current_dist + epsilon;
+        let dist = to_dist - current_dist;
         Point3::<f32> {
             x: p1.x + direction.x * dist,
             y: p1.y + direction.y * dist,
