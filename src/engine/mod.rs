@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use camera::CameraController;
 use delaunay::{delaunay_triangulation, get_near_cells};
@@ -11,7 +11,10 @@ use winit::{
     window::Window,
 };
 
-use crate::{shared::cell::Cell, SimulationEvent};
+use crate::{
+    shared::cell::{Cell, EventSystem},
+    SimulationEvent,
+};
 
 mod camera;
 pub mod cell_renderer;
@@ -22,16 +25,18 @@ mod vertex;
 const LEVEL_OF_DETAIL: u16 = 20;
 
 pub struct Simulation<'w> {
-    cells: Arc<RwLock<Vec<Cell>>>,
+    cells: Arc<Vec<Cell>>,
+    cell_events: Arc<EventSystem>,
     window: Option<Arc<Window>>,
     camera_controller: Arc<Mutex<CameraController>>,
     state: Option<ApplicationState<'w>>,
 }
 
 impl<'w> Simulation<'w> {
-    pub fn new(cells: Vec<Cell>) -> Self {
+    pub fn new(cells: Vec<Cell>, cell_events: Arc<EventSystem>) -> Self {
         let simulation = Simulation {
-            cells: Arc::new(RwLock::new(cells)),
+            cells: Arc::new(cells),
+            cell_events,
             window: None,
             state: None,
             camera_controller: Arc::new(Mutex::new(CameraController::new(0.2))),
@@ -47,17 +52,15 @@ impl<'w> Simulation<'w> {
         {
             let tet_gen_result;
             {
-                let cells = self.cells.read().unwrap();
-                tet_gen_result = match delaunay_triangulation(&cells) {
+                tet_gen_result = match delaunay_triangulation(&self.cells) {
                     Ok(res) => res,
                     Err(err) => panic!("An error occured in the delaunay triangulation!\n{}", err),
                 };
             }
-            let cells = self.cells.write().unwrap();
-            for cell in cells.iter() {
+            for cell in self.cells.iter() {
                 let near_cells = get_near_cells(&cell.clone().into(), &tet_gen_result);
                 {
-                    let bio = cell.bio.write().unwrap();
+                    let bio = cell.bio.read().unwrap();
                     bio.update(&near_cells);
                 }
                 {
@@ -75,15 +78,6 @@ impl<'w> Simulation<'w> {
     }
 }
 
-// fn get_other_cells(cells: &MutexGuard<'_, Vec<Cell>>, cell: &Cell) -> Vec<Cell> {
-//     let other_cells: Vec<Cell> = cells
-//         .iter()
-//         .filter(|other_cell| other_cell.entity_id() != cell.entity_id())
-//         .map(|other_cell| other_cell.clone()) // Clone the cell here
-//         .collect();
-//     other_cells
-// }
-
 impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = Arc::new(init_window(event_loop));
@@ -92,13 +86,14 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
         let state = block_on(ApplicationState::new(
             window,
             cells,
+            Arc::clone(&self.cell_events),
             self.camera_controller.clone(),
         ));
         self.state = Some(state);
         println!("resumed!");
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: SimulationEvent) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: SimulationEvent) {
         match event {
             SimulationEvent::Update => {
                 self.update();
@@ -109,7 +104,7 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         match event {
@@ -148,17 +143,23 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
                 let state = self.state.as_ref().unwrap();
                 self.render(state);
             }
-            WindowEvent::MouseInput { button, state, .. } => match button {
-                MouseButton::Left => match state {
+            WindowEvent::MouseInput {
+                button,
+                state: key_state,
+                ..
+            } => match button {
+                MouseButton::Left => match key_state {
                     ElementState::Released => {
-                        let position = self
-                            .state
-                            .as_ref()
-                            .unwrap()
-                            .mouse_position
-                            .as_ref()
-                            .unwrap();
-                        println!("Clicked at {:?}!", position);
+                        match &self.state {
+                            Some(state) => {
+                                let position = state.mouse_position.as_ref().unwrap();
+                                let select_ray = state.screen_pos_2_select_ray(position);
+                                state.select_cells(select_ray);
+                            }
+                            None => {
+                                println!("No state!")
+                            }
+                        }
                         // TODO: if a cell has been hit with this position, set the cell as acive and use its center as camera center.
                     }
                     _ => {}

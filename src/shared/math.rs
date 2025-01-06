@@ -1,8 +1,14 @@
 use std::{i16, iter::Sum};
 
-use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
+use cgmath::{BaseFloat, ElementWise, InnerSpace, Point3, Vector3};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub struct Line<T> {
+    pub pos: Vector3<T>,
+    pub dir: Vector3<T>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Plane<T> {
     pub pos: Vector3<T>,
     pub normal: Vector3<T>,
@@ -45,23 +51,52 @@ pub fn signed_distance<T: BaseFloat>(point: &Point3<T>, plane: &Plane<T>) -> T {
     dist.dot(plane.normal)
 }
 
-pub fn point_vs_plane<T: BaseFloat>(point: &Point3<T>, plane: &Plane<T>) -> Classification {
+pub fn point_vs_plane<T: BaseFloat>(
+    point: &Point3<T>,
+    plane: &Plane<T>,
+) -> Point2PlaneClassification {
     let dist = signed_distance(point, plane);
     if dist == T::zero() {
-        return Classification::Intersects;
+        return Point2PlaneClassification::Intersects;
     } else if dist > T::zero() {
-        return Classification::InFront;
+        return Point2PlaneClassification::InFront;
     } else {
-        return Classification::Behind;
+        return Point2PlaneClassification::Behind;
     }
 }
 
 #[derive(PartialEq, Eq)]
-pub enum Classification {
+pub enum Point2PlaneClassification {
     /// behind the plane, opposite direction of the planes normal
     Behind,
     /// in front of the plane, in direction of the planes normal
     InFront,
     /// touches the plane
     Intersects,
+}
+
+pub fn line_plane_intersection<T: BaseFloat>(
+    line: &Line<T>,
+    plane: &Plane<T>,
+) -> Line2PlaneClassification<T> {
+    let line_2_plane = plane.pos - line.pos;
+    let denominator = plane.normal.dot(line.dir);
+
+    // If denominator is close to zero, the line is parallel to the plane
+    if denominator.abs() < T::epsilon() {
+        return Line2PlaneClassification::Parallel;
+    }
+
+    let t = plane.normal.dot(line_2_plane) / denominator;
+
+    let intersection = line.pos + (line.dir * t);
+    Line2PlaneClassification::Intersects(intersection)
+}
+
+#[derive(PartialEq, Eq)]
+pub enum Line2PlaneClassification<T: BaseFloat> {
+    /// line parallel to the plane
+    Parallel,
+    /// line intersects with the plane
+    Intersects(Vector3<T>),
 }

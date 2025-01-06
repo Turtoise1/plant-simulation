@@ -81,7 +81,7 @@ fn main() {
         ),
     ];
 
-    let mut simulation = Simulation::new(cells);
+    let mut simulation = Simulation::new(cells, events);
 
     let event_loop = EventLoop::with_user_event()
         .build()

@@ -1,12 +1,16 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
+use cgmath::{EuclideanSpace, InnerSpace, Point3, SquareMatrix, Vector3, Vector4};
 use wgpu::{
     util::DeviceExt, Adapter, Backends, Buffer, Device, Instance, InstanceDescriptor,
     InstanceFlags, MemoryHints, Queue, RenderPipeline, Surface, TextureFormat,
 };
 use winit::{dpi::PhysicalPosition, window::Window};
 
-use crate::shared::cell::Cell;
+use crate::shared::{
+    cell::{Cell, CellEvent, CellEventType, EventSystem},
+    math::{distance, line_plane_intersection, Line, Line2PlaneClassification, Plane},
+};
 
 use super::{
     camera::{Camera, CameraController, CameraUniform},
@@ -20,7 +24,8 @@ pub struct ApplicationState<'window> {
     device: Device,
     queue: Queue,
     render_pipeline: Option<RenderPipeline>,
-    cells: Arc<RwLock<Vec<Cell>>>,
+    cells: Arc<Vec<Cell>>,
+    cell_events: Arc<EventSystem>,
     pub mouse_position: Option<PhysicalPosition<f64>>,
     camera: Camera,
     camera_controller: Arc<Mutex<CameraController>>,
@@ -33,7 +38,8 @@ pub struct ApplicationState<'window> {
 impl<'window> ApplicationState<'window> {
     pub async fn new(
         window: Arc<Window>,
-        cells: Arc<RwLock<Vec<Cell>>>,
+        cells: Arc<Vec<Cell>>,
+        cell_events: Arc<EventSystem>,
         camera_controller: Arc<Mutex<CameraController>>,
     ) -> Self {
         let instance = create_instance();
@@ -63,9 +69,9 @@ impl<'window> ApplicationState<'window> {
 
         let size = window.as_ref().inner_size();
         let camera = Camera {
-            // position the camera 1 unit up and 3 units back
+            // position the camera 0 units up and 3 units back
             // +z is out of the screen
-            eye: (0.0, 1.0, 3.0).into(),
+            eye: (0.0, 0.0, 3.0).into(),
             // have it look at the origin
             target: (0.0, 0.0, 0.0).into(),
             // which way is "up"
@@ -115,6 +121,7 @@ impl<'window> ApplicationState<'window> {
             queue,
             render_pipeline: None,
             cells,
+            cell_events,
             mouse_position: None,
             camera,
             camera_controller,
@@ -129,16 +136,69 @@ impl<'window> ApplicationState<'window> {
         state
     }
 
+    pub fn screen_pos_2_select_ray(&self, screen_pos: &PhysicalPosition<f64>) -> Line<f32> {
+        let view_projection_matrix = self.camera.build_view_projection_matrix();
+        let inverted = view_projection_matrix.invert().unwrap();
+        let screen_pos: PhysicalPosition<f32> =
+            PhysicalPosition::new(screen_pos.x as f32, screen_pos.y as f32);
+        let front = Vector4::new(screen_pos.x, screen_pos.y, 0., 1.);
+        let back = Vector4::new(screen_pos.x, screen_pos.y, 1., 1.);
+        let front = (inverted * front).truncate();
+        let back = (inverted * back).truncate();
+        let dir = back - front;
+        Line {
+            pos: front,
+            dir: dir.normalize(),
+        }
+    }
+
+    pub fn select_cells(&self, select_ray: Line<f32>) {
+        let view_projection_matrix = self.camera.build_view_projection_matrix();
+        let inverted = view_projection_matrix.invert().unwrap();
+        for cell in self.cells.iter() {
+            let renderer = cell.renderer.read().unwrap();
+            let cell_pos = renderer.position();
+            let cell_pos = Vector4::new(cell_pos.x, cell_pos.y, cell_pos.z, 1.);
+            // clip position
+            let cell_pos = (view_projection_matrix * cell_pos).truncate();
+            let cell_plane = Plane::<f32> {
+                pos: cell_pos,
+                normal: select_ray.dir,
+            };
+            match line_plane_intersection(&select_ray, &cell_plane) {
+                Line2PlaneClassification::Parallel => {
+                    panic!("This should not happen!")
+                }
+                Line2PlaneClassification::Intersects(intersection_point) => {
+                    println!(
+                        "ray direction {:?}, intersection point {:?}, cell position {:?}",
+                        select_ray.dir, intersection_point, cell_pos
+                    );
+                    if distance(
+                        &(Point3::origin() + cell_pos),
+                        &(Point3::origin() + intersection_point),
+                    ) < *renderer.radius()
+                    {
+                        println!("Intersection with cell {}", renderer.cell_id());
+                        self.cell_events.notify(Arc::new(CellEvent {
+                            id: renderer.cell_id(),
+                            event_type: CellEventType::Mark(Option::None),
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
     pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let cells = self.cells.write().unwrap();
         // optionally splitting into parts, maybe useful for multithreading i don't know
         // let parts = split_into_parts(&cells, 8);
-        let parts = &[&cells]; // instead only one part at the moment
+        let parts = &[&self.cells]; // instead only one part at the moment
 
         let mut encoders = Vec::new();
         for (index, cells) in parts.iter().enumerate() {
@@ -188,8 +248,8 @@ impl<'window> ApplicationState<'window> {
             });
             for cell in cells.iter() {
                 let renderer = cell.renderer.read().unwrap();
-                let vertices = &renderer.vertices;
-                let indices = &renderer.indices;
+                let vertices = renderer.vertices();
+                let indices = renderer.indices();
                 let vertex_buffer =
                     self.device
                         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -222,9 +282,9 @@ impl<'window> ApplicationState<'window> {
                 .expect("Could not get default configuration for the surface.");
         self.surface.configure(&self.device, &config);
         let camera = Camera {
-            // position the camera 1 unit up and 2 units back
+            // position the camera 0 unit up and 3 units back
             // +z is out of the screen
-            eye: (0.0, 1.0, 2.0).into(),
+            eye: (0.0, 0.0, 3.0).into(),
             // have it look at the origin
             target: (0.0, 0.0, 0.0).into(),
             // which way is "up"

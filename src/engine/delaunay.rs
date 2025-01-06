@@ -58,7 +58,7 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
                 let renderer = c.renderer.read().unwrap();
                 let position = renderer.position().clone();
                 CellInformation::<f32> {
-                    id: renderer.cell_id,
+                    id: renderer.cell_id(),
                     position,
                     radius: renderer.radius_clone(),
                 }
@@ -83,7 +83,7 @@ pub fn delaunay_triangulation(cells: &Vec<Cell>) -> Result<TetGenResult<f32>, St
                         let renderer = c.renderer.read().unwrap();
                         let position = renderer.position().clone();
                         CellInformation::<f32> {
-                            id: renderer.cell_id,
+                            id: renderer.cell_id(),
                             position,
                             radius: renderer.radius_clone(),
                         }

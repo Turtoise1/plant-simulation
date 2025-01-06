@@ -10,7 +10,7 @@ use crate::{
     model::entity::{generate_id, Entity},
     shared::{
         cell::{CellEvent, CellEventType, CellInformation, EventSystem},
-        plane::{distance, mean},
+        math::{distance, mean},
     },
 };
 
@@ -79,6 +79,9 @@ impl BiologicalCell {
                     }
                     CellEventType::UpdateVolume(new_volume) => {
                         *volume.write().unwrap() = new_volume;
+                    }
+                    CellEventType::Mark(mark) => {
+                        // Marking is done in renderer
                     }
                 }
             };

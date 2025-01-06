@@ -14,7 +14,7 @@ use crate::{
 };
 use cgmath::{BaseFloat, Point3};
 
-use super::plane::distance;
+use super::math::distance;
 
 #[derive(Clone, Debug)]
 pub struct CellInformation<T: BaseFloat> {
@@ -36,7 +36,7 @@ impl From<BiologicalCell> for CellInformation<f32> {
 impl From<CellRenderer> for CellInformation<f32> {
     fn from(value: CellRenderer) -> Self {
         Self {
-            id: value.cell_id,
+            id: value.cell_id(),
             position: value.position_clone(),
             radius: value.radius_clone(),
         }
@@ -170,4 +170,6 @@ pub enum CellEventType {
     UpdatePosition(Point3<f32>),
     /// The volume of a cell will be updated to the given f32.
     UpdateVolume(f32),
+    /// None inverts the current marked bool, Some marks or unmarks specifically
+    Mark(Option<bool>),
 }

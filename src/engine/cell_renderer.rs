@@ -1,7 +1,7 @@
 use super::vertex::Vertex;
 use crate::shared::{
     cell::{CellEventType, CellInformation, EventSystem},
-    plane::{distance, point_vs_plane, signed_distance, Classification, Plane},
+    math::{self, distance, point_vs_plane, signed_distance, Plane, Point2PlaneClassification},
 };
 use cgmath::{InnerSpace, Point3, Vector3};
 use std::{
@@ -12,17 +12,19 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub struct CellRenderer {
+    marked: Arc<RwLock<bool>>,
     radius: Arc<RwLock<f32>>,
     position: Arc<RwLock<Point3<f32>>>,
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u16>,
-    pub cell_id: u64,
+    vertices: Vec<Vertex>,
+    indices: Vec<u16>,
+    cell_id: u64,
     events: Arc<EventSystem>,
 }
 
 impl CellRenderer {
     pub fn new(position: &Point3<f32>, volume: &f32, id: u64, events: Arc<EventSystem>) -> Self {
         let renderer = CellRenderer {
+            marked: Arc::new(RwLock::new(false)),
             radius: Arc::new(RwLock::new(radius_from_volume(volume))),
             position: Arc::new(RwLock::new(position.clone())),
             vertices: Vec::new(),
@@ -50,9 +52,22 @@ impl CellRenderer {
         *self.radius.read().unwrap()
     }
 
+    pub fn vertices(&self) -> &Vec<Vertex> {
+        &self.vertices
+    }
+
+    pub fn indices(&self) -> &Vec<u16> {
+        &self.indices
+    }
+
+    pub fn cell_id(&self) -> u64 {
+        self.cell_id
+    }
+
     fn handle_events(&self) {
         let pos = Arc::clone(&self.position);
         let radius = Arc::clone(&self.radius);
+        let marked = Arc::clone(&self.marked);
         let id = self.cell_id;
         self.events.subscribe(id, move |event| {
             if event.id == id {
@@ -63,6 +78,18 @@ impl CellRenderer {
                     CellEventType::UpdateVolume(new_volume) => {
                         *radius.write().unwrap() = radius_from_volume(&new_volume);
                     }
+                    CellEventType::Mark(new_marked) => match new_marked {
+                        None => {
+                            let last;
+                            {
+                                last = *marked.read().unwrap();
+                            }
+                            *marked.write().unwrap() = !last;
+                        }
+                        Some(new_marked) => {
+                            *marked.write().unwrap() = new_marked;
+                        }
+                    },
                 }
             };
         });
@@ -98,9 +125,13 @@ impl CellRenderer {
                 let x = xy * sector_angle.cos();
                 let y = xy * sector_angle.sin();
 
+                let mut color = [1., 1., 1.];
+                if *self.marked.read().unwrap() {
+                    color = [1., 1., 0.];
+                }
                 let vertex = Vertex {
                     position: [x + pos.x, y + pos.y, z + pos.z],
-                    color: [1., 1., 1.],
+                    color,
                 };
 
                 let vertex = self.get_rid_of_intersections(vertex, &planes);
@@ -180,8 +211,8 @@ impl CellRenderer {
             let class_cell = point_vs_plane(&self.position(), plane);
             let class_vertex = point_vs_plane(&vertex.position.into(), plane);
             if class_cell != class_vertex
-                && class_cell != Classification::Intersects
-                && class_vertex != Classification::Intersects
+                && class_cell != Point2PlaneClassification::Intersects
+                && class_vertex != Point2PlaneClassification::Intersects
             {
                 vertex = self.move_vertex_towards_plane(vertex, plane);
             }
