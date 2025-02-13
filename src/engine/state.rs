@@ -139,28 +139,48 @@ impl<'window> ApplicationState<'window> {
     pub fn screen_pos_2_select_ray(&self, screen_pos: &PhysicalPosition<f64>) -> Line<f32> {
         let view_projection_matrix = self.camera.build_view_projection_matrix();
         let inverted = view_projection_matrix.invert().unwrap();
-        let screen_pos: PhysicalPosition<f32> =
-            PhysicalPosition::new(screen_pos.x as f32, screen_pos.y as f32);
-        let front = Vector4::new(screen_pos.x, screen_pos.y, 0., 1.);
-        let back = Vector4::new(screen_pos.x, screen_pos.y, 1., 1.);
-        let front = (inverted * front).truncate();
-        let back = (inverted * back).truncate();
-        let dir = back - front;
+        let width = self.window.inner_size().width as f64;
+        let height = self.window.inner_size().height as f64;
+        let x = screen_pos.x;
+        let y = screen_pos.y;
+        // Convert screen position to NDC
+        let ndc_x = ((2.0 * x) / width - 1.0) as f32;
+        let ndc_y = (1.0 - (2.0 * y) / height) as f32;
+
+        // Clip space coordinates
+        let near_clip = Vector4::new(ndc_x, ndc_y, -1.0, 1.0);
+        let far_clip = Vector4::new(ndc_x, ndc_y, 1.0, 1.0);
+
+        // Transform to world space
+        let near_world = inverted * near_clip;
+        let far_world = inverted * far_clip;
+
+        // Perspective divide to get 3D coordinates
+        let near_point = Point3::new(
+            near_world.x / near_world.w,
+            near_world.y / near_world.w,
+            near_world.z / near_world.w,
+        );
+
+        let far_point = Point3::new(
+            far_world.x / far_world.w,
+            far_world.y / far_world.w,
+            far_world.z / far_world.w,
+        );
+
+        // Compute ray direction
+        let ray_dir = (far_point - near_point).normalize();
         Line {
-            pos: front,
-            dir: dir.normalize(),
+            pos: near_point.to_vec(),
+            dir: ray_dir,
         }
     }
 
     pub fn select_cells(&self, select_ray: Line<f32>) {
-        let view_projection_matrix = self.camera.build_view_projection_matrix();
-        let inverted = view_projection_matrix.invert().unwrap();
         for cell in self.cells.iter() {
             let renderer = cell.renderer.read().unwrap();
             let cell_pos = renderer.position();
-            let cell_pos = Vector4::new(cell_pos.x, cell_pos.y, cell_pos.z, 1.);
-            // clip position
-            let cell_pos = (view_projection_matrix * cell_pos).truncate();
+            let cell_pos = Vector3::new(cell_pos.x, cell_pos.y, cell_pos.z);
             let cell_plane = Plane::<f32> {
                 pos: cell_pos,
                 normal: select_ray.dir,
@@ -170,10 +190,6 @@ impl<'window> ApplicationState<'window> {
                     panic!("This should not happen!")
                 }
                 Line2PlaneClassification::Intersects(intersection_point) => {
-                    println!(
-                        "ray direction {:?}, intersection point {:?}, cell position {:?}",
-                        select_ray.dir, intersection_point, cell_pos
-                    );
                     if distance(
                         &(Point3::origin() + cell_pos),
                         &(Point3::origin() + intersection_point),

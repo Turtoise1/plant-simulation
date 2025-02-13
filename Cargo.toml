@@ -8,6 +8,6 @@ bytemuck = { version = "1.16.1", features = ["derive"] }
 cgmath = "0.18.0"
 futures = "0.3.30"
 wgpu = "22.0.0"
-winit = "0.30.4"
+winit = "0.30.*"
 tritet = "*"                                             # for delaunay triangulation
 rand = "0.8.5"
