@@ -187,7 +187,7 @@ impl<'window> ApplicationState<'window> {
             };
             match line_plane_intersection(&select_ray, &cell_plane) {
                 Line2PlaneClassification::Parallel => {
-                    panic!("This should not happen!")
+                    panic!("This should not happen because the plane should be orthogonal to the select ray!")
                 }
                 Line2PlaneClassification::Intersects(intersection_point) => {
                     if distance(
