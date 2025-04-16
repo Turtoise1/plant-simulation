@@ -5,6 +5,8 @@ use engine::Simulation;
 use shared::cell::{Cell, EventSystem};
 use winit::event_loop::{ControlFlow, EventLoop};
 
+use bevy::prelude::*;
+
 mod engine;
 mod model;
 mod shared;
@@ -88,6 +90,8 @@ fn main() {
         .expect("Event loop creation for winit failed.");
 
     let proxy = event_loop.create_proxy();
+
+    App::new().add_plugins(DefaultPlugins).run();
 
     thread::spawn(move || loop {
         let _ = proxy.send_event(SimulationEvent::Update);
