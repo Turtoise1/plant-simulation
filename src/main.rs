@@ -1,9 +1,9 @@
-use std::{sync::Arc, thread, time::Duration};
+use std::sync::Arc;
 
+use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use cgmath::Point3;
-use engine::Simulation;
+use engine::{camera::spawn_camera, Simulation};
 use shared::cell::{Cell, EventSystem};
-use winit::event_loop::{ControlFlow, EventLoop};
 
 use bevy::prelude::*;
 
@@ -85,27 +85,9 @@ fn main() {
 
     let mut simulation = Simulation::new(cells, events);
 
-    let event_loop = EventLoop::with_user_event()
-        .build()
-        .expect("Event loop creation for winit failed.");
-
-    let proxy = event_loop.create_proxy();
-
-    App::new().add_plugins(DefaultPlugins).run();
-
-    thread::spawn(move || loop {
-        let _ = proxy.send_event(SimulationEvent::Update);
-        thread::sleep(Duration::from_millis(200));
-    });
-
-    // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
-    // dispatched any events. This is ideal for games and similar applications.
-    // event_loop.set_control_flow(ControlFlow::Poll);
-
-    // ControlFlow::Wait pauses the event loop if no events are available to process.
-    // This is ideal for non-game applications that only update in response to user
-    // input, and uses significantly less power/CPU time than ControlFlow::Poll.
-    event_loop.set_control_flow(ControlFlow::Wait);
-
-    event_loop.run_app(&mut simulation).unwrap();
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(PanOrbitCameraPlugin)
+        .add_systems(Startup, (spawn_camera, Simulation::setup))
+        .run();
 }

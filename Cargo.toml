@@ -43,3 +43,4 @@ winit = "0.30.*"
 tritet = "*"                                             # for delaunay triangulation
 rand = "0.8.5"
 bevy = { version = "0.15.3", features = ["dynamic_linking"] }
+bevy_panorbit_camera = "0.25.0"

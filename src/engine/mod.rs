@@ -1,9 +1,8 @@
-use std::sync::{Arc, Mutex};
-
-use camera::CameraController;
+use bevy::prelude::*;
 use delaunay::{delaunay_triangulation, get_near_cells};
 use futures::executor::block_on;
 use state::ApplicationState;
+use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, MouseButton, WindowEvent},
@@ -16,7 +15,7 @@ use crate::{
     SimulationEvent,
 };
 
-mod camera;
+pub mod camera;
 pub mod cell_renderer;
 mod delaunay;
 mod state;
@@ -24,29 +23,52 @@ mod vertex;
 
 const LEVEL_OF_DETAIL: u16 = 20;
 
-pub struct Simulation<'w> {
+pub struct Simulation {
     cells: Arc<Vec<Cell>>,
     cell_events: Arc<EventSystem>,
     window: Option<Arc<Window>>,
-    camera_controller: Arc<Mutex<CameraController>>,
-    state: Option<ApplicationState<'w>>,
+    state: Option<ApplicationState>,
 }
 
-impl<'w> Simulation<'w> {
+impl Simulation {
     pub fn new(cells: Vec<Cell>, cell_events: Arc<EventSystem>) -> Self {
         let simulation = Simulation {
             cells: Arc::new(cells),
             cell_events,
             window: None,
             state: None,
-            camera_controller: Arc::new(Mutex::new(CameraController::new(0.2))),
         };
         simulation
     }
 
-    fn render(&self, state: &ApplicationState<'w>) {
-        state.render().unwrap();
+    pub fn setup(
+        mut commands: Commands,
+        mut meshes: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<StandardMaterial>>,
+    ) {
+        // circular base
+        commands.spawn((
+            Mesh3d(meshes.add(Circle::new(4.0))),
+            MeshMaterial3d(materials.add(Color::WHITE)),
+            Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        ));
+        // cube
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+            MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+            Transform::from_xyz(0.0, 0.5, 0.0),
+        ));
+        // light
+        commands.spawn((
+            PointLight {
+                shadows_enabled: true,
+                ..default()
+            },
+            Transform::from_xyz(4.0, 8.0, 4.0),
+        ));
     }
+
+    fn render(&self, state: &ApplicationState) {}
 
     pub fn update(&mut self) {
         {
@@ -78,7 +100,7 @@ impl<'w> Simulation<'w> {
     }
 }
 
-impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
+impl ApplicationHandler<SimulationEvent> for Simulation {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = Arc::new(init_window(event_loop));
         self.window = Some(window.clone());
@@ -87,7 +109,6 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
             window,
             cells,
             Arc::clone(&self.cell_events),
-            self.camera_controller.clone(),
         ));
         self.state = Some(state);
         println!("resumed!");
@@ -115,7 +136,6 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
             }
             WindowEvent::RedrawRequested { .. } => {
                 let state = self.state.as_mut().unwrap();
-                state.update_camera();
                 let state = self.state.as_ref().unwrap();
                 self.render(state);
 
@@ -125,21 +145,10 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
                 // self.window.as_ref().unwrap().clone().request_redraw();
             }
             WindowEvent::Resized { .. } => {
-                let state = self.state.as_mut().unwrap();
-                state.resize();
-                state.update_camera();
                 let state = self.state.as_ref().unwrap();
                 self.render(state);
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                let camera_controller = Arc::clone(&self.camera_controller);
-                let _ = camera_controller
-                    .lock()
-                    .as_mut()
-                    .unwrap()
-                    .process_events(&event);
-                let state = self.state.as_mut().unwrap();
-                state.update_camera();
                 let state = self.state.as_ref().unwrap();
                 self.render(state);
             }
@@ -152,9 +161,9 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
                     ElementState::Released => {
                         match &self.state {
                             Some(state) => {
-                                let position = state.mouse_position.as_ref().unwrap();
-                                let select_ray = state.screen_pos_2_select_ray(position);
-                                state.select_cells(select_ray);
+                                // let position = state.mouse_position.as_ref().unwrap();
+                                // let select_ray = state.screen_pos_2_select_ray(position);
+                                // state.select_cells(select_ray);
                             }
                             None => {
                                 println!("No state!")
@@ -168,14 +177,6 @@ impl<'w> ApplicationHandler<SimulationEvent> for Simulation<'w> {
             },
             WindowEvent::MouseWheel { delta, phase, .. } => {
                 println!("Got mouse wheel event: {:?}, {:?}", delta, phase);
-                let camera_controller = Arc::clone(&self.camera_controller);
-                let _ = camera_controller
-                    .lock()
-                    .as_mut()
-                    .unwrap()
-                    .process_mouse_wheel(&delta, &phase);
-                let state = self.state.as_mut().unwrap();
-                state.update_camera();
                 let state = self.state.as_ref().unwrap();
                 self.render(state);
             }

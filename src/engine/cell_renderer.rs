@@ -1,7 +1,7 @@
 use super::vertex::Vertex;
 use crate::shared::{
     cell::{CellEventType, CellInformation, EventSystem},
-    math::{self, distance, point_vs_plane, signed_distance, Plane, Point2PlaneClassification},
+    math::{distance, point_vs_plane, signed_distance, Plane, Point2PlaneClassification},
 };
 use cgmath::{InnerSpace, Point3, Vector3};
 use std::{
