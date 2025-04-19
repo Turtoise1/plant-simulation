@@ -1,175 +1,95 @@
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, Mutex, RwLock,
-    },
-    thread,
-};
+use bevy::prelude::*;
+use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
+use std::{collections::HashMap, fmt::Debug};
 
-use crate::{
-    engine::cell_renderer::{radius_from_volume, CellRenderer},
-    model::{cell::BiologicalCell, entity::Entity},
-};
-use cgmath::{BaseFloat, Point3};
+use super::math::{distance, mean};
 
-use super::math::distance;
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Component)]
 pub struct CellInformation<T: BaseFloat> {
     pub id: u64,
     pub position: Point3<T>,
     pub radius: T,
 }
 
-impl From<BiologicalCell> for CellInformation<f32> {
-    fn from(value: BiologicalCell) -> Self {
-        Self {
-            id: value.entity_id(),
-            position: value.position().clone(),
-            radius: radius_from_volume(&value.volume()),
+impl<T: BaseFloat + std::iter::Sum> CellInformation<T> {
+    /// move self away from near cells
+    fn reposition(&mut self, near_cells: &HashMap<u64, CellInformation<T>>) {
+        let mut positions = vec![];
+        near_cells
+            .values()
+            .filter(|other| {
+                distance(&self.position, &other.position) < T::max(self.radius, other.radius)
+            })
+            .for_each(|near| {
+                positions.push(self.get_point_away_from(near));
+            });
+        if positions.len() > 0 {
+            self.position = mean(&positions);
+        }
+    }
+
+    /// finds a point away from the other cell and returns it
+    fn get_point_away_from(&self, from: &CellInformation<T>) -> Point3<T> {
+        let p1 = &self.position;
+        let p2 = &from.position;
+        let r1 = self.radius;
+        let r2 = from.radius;
+
+        let direction = Vector3::<T>::new(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z).normalize();
+
+        let current_dist = distance(p1, p2);
+        let to_dist = T::max(r1, r2);
+        let dist = to_dist - current_dist;
+        Point3::<T> {
+            x: p1.x + direction.x * dist,
+            y: p1.y + direction.y * dist,
+            z: p1.z + direction.z * dist,
         }
     }
 }
 
-impl From<CellRenderer> for CellInformation<f32> {
-    fn from(value: CellRenderer) -> Self {
-        Self {
-            id: value.cell_id(),
-            position: value.position_clone(),
-            radius: value.radius_clone(),
-        }
-    }
-}
-
-impl From<Cell> for CellInformation<f32> {
-    fn from(value: Cell) -> Self {
-        let renderer = value.renderer.read().unwrap().clone();
-        renderer.into()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Cell {
-    pub bio: Arc<RwLock<BiologicalCell>>,
-    pub renderer: Arc<RwLock<CellRenderer>>,
-    events: Arc<EventSystem>,
-}
-
-impl Cell {
-    pub fn new(position: Point3<f32>, volume: f32, events: Arc<EventSystem>) -> Self {
-        let bio = Arc::new(RwLock::new(BiologicalCell::new(
-            &position,
-            volume,
-            Arc::clone(&events),
-        )));
-        let renderer = Arc::new(RwLock::new(CellRenderer::new(
-            &position,
-            &volume,
-            bio.read().unwrap().entity_id(),
-            Arc::clone(&events),
-        )));
-        Self {
-            bio,
-            renderer,
-            events,
-        }
-    }
-}
-
-pub fn near(pos1: &Point3<f32>, radius1: f32, pos2: &Point3<f32>, radius2: f32) -> bool {
+/// Whether two cells with the given positions and radii overlap
+pub fn overlapping<T: BaseFloat + std::iter::Sum>(
+    pos1: &Point3<T>,
+    radius1: T,
+    pos2: &Point3<T>,
+    radius2: T,
+) -> bool {
     let dist = distance(pos1, pos2);
     dist < radius1 + radius2
 }
 
-pub struct EventSystem {
-    subscribers: Mutex<HashMap<u64, RwLock<Vec<Sender<Arc<CellEvent>>>>>>,
-}
-
-impl Debug for EventSystem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "event system with {} subscribers",
-            self.subscribers.lock().unwrap().len()
-        )
+/// expects two overlapping cells
+/// calculates the overlap in a straight line between the cells centers
+/// returns the point in the middle of the overlap
+fn between_depending_on_radius<T: BaseFloat + std::iter::Sum>(
+    cell1: &CellInformation<T>,
+    cell2: &CellInformation<T>,
+) -> Point3<T> {
+    let mut radius_capped1 = cell1.radius;
+    let mut radius_capped2 = cell2.radius;
+    let dist = distance(&cell1.position, &cell2.position);
+    if radius_capped1 > dist {
+        radius_capped1 = dist;
+    }
+    if radius_capped2 > dist {
+        radius_capped2 = dist;
+    }
+    // between 0 and 1
+    let overlap = radius_capped1 + radius_capped2 - dist;
+    let factor = (radius_capped2 - overlap / T::from(2.).unwrap()) / dist;
+    Point3::<T> {
+        x: cell2.position.x + factor * (cell1.position.x - cell2.position.x),
+        y: cell2.position.y + factor * (cell1.position.y - cell2.position.y),
+        z: cell2.position.z + factor * (cell1.position.z - cell2.position.z),
     }
 }
 
-impl EventSystem {
-    pub fn new() -> Self {
-        EventSystem {
-            subscribers: Mutex::new(HashMap::new()),
-        }
-    }
-
-    /// subscribe to cell events to handle them.
-    /// The given id can be used to directly address all subscribers registered under this id.
-    pub fn subscribe<F>(&self, id: u64, handler: F)
-    where
-        F: Fn(Arc<CellEvent>) + Send + 'static,
-    {
-        let (sender, receiver) = channel();
-        {
-            let mut subscribers = self.subscribers.lock().unwrap();
-            let previous = subscribers.get(&id);
-            if previous.is_none() {
-                subscribers.insert(id, RwLock::new(vec![sender]));
-            } else {
-                let mut previous = previous.unwrap().write().unwrap();
-                previous.push(sender);
-            }
-        }
-        thread::spawn(move || {
-            for event in receiver {
-                handler(event);
-            }
-        });
-    }
-
-    /// notifies the cell specified by the id given in the event
-    pub fn notify(&self, event: Arc<CellEvent>) {
-        let subscribers = self.subscribers.lock().unwrap();
-        let sender = subscribers.get(&event.id);
-        match sender {
-            Option::Some(senders) => {
-                let senders = senders.read().unwrap();
-                senders.iter().for_each(|sender| {
-                    let success = sender.send(Arc::clone(&event));
-                    if success.is_err() {
-                        println!(
-                            "{:?} could not be sent! Error: {}",
-                            event,
-                            success.unwrap_err()
-                        );
-                    }
-                });
-            }
-            None => {
-                println!(
-                    "In this event system, no subscriber with id {} could be found!",
-                    event.id,
-                );
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct CellEvent {
-    /// The id of the cell that should be updated.
-    pub id: u64,
-    /// The type of the cell event and potentially data.
-    pub event_type: CellEventType,
-}
-
-#[derive(Clone, Debug)]
-pub enum CellEventType {
-    /// The position of a cell will be updated to the given f32.
-    UpdatePosition(Point3<f32>),
-    /// The volume of a cell will be updated to the given f32.
-    UpdateVolume(f32),
-    /// None inverts the current marked bool, Some marks or unmarks specifically
-    Mark(Option<bool>),
+/// returns whether the cells positions are further away from each other than sum of the radiuses
+fn intersect<T: BaseFloat + std::iter::Sum>(
+    cell1: &CellInformation<T>,
+    cell2: &CellInformation<T>,
+) -> bool {
+    let min_distance = cell1.radius + cell2.radius;
+    distance(&cell1.position, &cell2.position) < min_distance
 }

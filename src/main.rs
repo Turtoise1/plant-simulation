@@ -1,9 +1,5 @@
-use std::sync::Arc;
-
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
-use cgmath::Point3;
-use engine::{camera::spawn_camera, Simulation};
-use shared::cell::{Cell, EventSystem};
+use engine::camera::spawn_camera;
 
 use bevy::prelude::*;
 
@@ -11,83 +7,37 @@ mod engine;
 mod model;
 mod shared;
 
-enum SimulationEvent {
-    Update,
+pub fn example_setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    // circular base
+    commands.spawn((
+        Mesh3d(meshes.add(Circle::new(4.0))),
+        MeshMaterial3d(materials.add(Color::WHITE)),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+    ));
+    // cube
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+    ));
+    // light
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
 }
 
 fn main() {
-    let events = Arc::new(EventSystem::new());
-    let cells = vec![
-        Cell::new(
-            Point3 {
-                x: 0.,
-                y: 0.,
-                z: 0.,
-            },
-            1.,
-            Arc::clone(&events),
-        ),
-        Cell::new(
-            Point3 {
-                x: -1.,
-                y: 0.,
-                z: 0.,
-            },
-            1.,
-            Arc::clone(&events),
-        ),
-        Cell::new(
-            Point3 {
-                x: 1.,
-                y: 0.,
-                z: 0.,
-            },
-            1.,
-            Arc::clone(&events),
-        ),
-        Cell::new(
-            Point3 {
-                x: 0.,
-                y: -1.,
-                z: 0.,
-            },
-            1.,
-            Arc::clone(&events),
-        ),
-        Cell::new(
-            Point3 {
-                x: 0.,
-                y: 1.,
-                z: 0.,
-            },
-            1.,
-            Arc::clone(&events),
-        ),
-        Cell::new(
-            Point3 {
-                x: 0.,
-                y: 0.,
-                z: -1.,
-            },
-            1.,
-            Arc::clone(&events),
-        ),
-        Cell::new(
-            Point3 {
-                x: 0.,
-                y: 0.,
-                z: 1.,
-            },
-            1.,
-            Arc::clone(&events),
-        ),
-    ];
-
-    let mut simulation = Simulation::new(cells, events);
-
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(PanOrbitCameraPlugin)
-        .add_systems(Startup, (spawn_camera, Simulation::setup))
+        .add_systems(Startup, (spawn_camera, example_setup))
         .run();
 }

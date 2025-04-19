@@ -1,6 +1,6 @@
-use std::{i16, iter::Sum};
+use std::{f64, i16, iter::Sum};
 
-use cgmath::{BaseFloat, ElementWise, InnerSpace, Point3, Vector3};
+use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
 
 #[derive(Clone, Debug)]
 pub struct Line<T> {
@@ -14,7 +14,14 @@ pub struct Plane<T> {
     pub normal: Vector3<T>,
 }
 
-pub fn mean<T: BaseFloat + std::convert::From<i16>>(points: &Vec<Point3<T>>) -> Point3<T> {
+/// Calculate the radius of a sphere given its volume
+/// Formula: radius = (3 * volume / (4 * π))^(1/3)
+pub fn radius_from_volume<T: BaseFloat>(volume: T) -> T {
+    let four_thirds_pi = T::from(4.0 / 3.0).unwrap() * T::from(f64::consts::PI).unwrap();
+    (volume / four_thirds_pi).powf(T::from(1.0 / 3.0).unwrap())
+}
+
+pub fn mean<T: BaseFloat>(points: &Vec<Point3<T>>) -> Point3<T> {
     if points.len() > i16::MAX as usize {
         panic!("This method should not be used to calculate the mean for big vectors with a length of over 32767!");
     }
@@ -28,8 +35,7 @@ pub fn mean<T: BaseFloat + std::convert::From<i16>>(points: &Vec<Point3<T>>) -> 
         sum.y += p.y;
         sum.z += p.z;
     });
-    let len = points.len() as i16;
-    let len: T = len.into();
+    let len: T = T::from(points.len()).unwrap();
     sum /= len;
     sum
 }
