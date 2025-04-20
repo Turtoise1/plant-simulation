@@ -1,22 +1,27 @@
 use bevy::prelude::*;
 use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Debug;
 
-use super::math::{distance, mean};
+use super::math::{distance, mean, radius_from_volume};
 
 #[derive(Clone, Debug, Component)]
 pub struct CellInformation<T: BaseFloat> {
-    pub id: u64,
     pub position: Point3<T>,
     pub radius: T,
 }
 
 impl<T: BaseFloat + std::iter::Sum> CellInformation<T> {
+    /// Updates self.radius according to the new volume and reposition itself according to near cells
+    pub fn update(&mut self, near_cells: &Vec<CellInformation<T>>, new_volume: T) {
+        self.radius = radius_from_volume(new_volume);
+        self.reposition(near_cells);
+    }
+
     /// move self away from near cells
-    fn reposition(&mut self, near_cells: &HashMap<u64, CellInformation<T>>) {
+    fn reposition(&mut self, near_cells: &Vec<CellInformation<T>>) {
         let mut positions = vec![];
         near_cells
-            .values()
+            .iter()
             .filter(|other| {
                 distance(&self.position, &other.position) < T::max(self.radius, other.radius)
             })

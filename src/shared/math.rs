@@ -1,6 +1,7 @@
 use std::{f64, i16, iter::Sum};
 
-use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
+use bevy::math::Vec3;
+use cgmath::{num_traits::Num, BaseFloat, InnerSpace, Point3, Vector3};
 
 #[derive(Clone, Debug)]
 pub struct Line<T> {
@@ -19,6 +20,11 @@ pub struct Plane<T> {
 pub fn radius_from_volume<T: BaseFloat>(volume: T) -> T {
     let four_thirds_pi = T::from(4.0 / 3.0).unwrap() * T::from(f64::consts::PI).unwrap();
     (volume / four_thirds_pi).powf(T::from(1.0 / 3.0).unwrap())
+}
+
+pub fn volume_from_radius<T: BaseFloat>(volume: T) -> T {
+    let four_thirds_pi = T::from(4.0 / 3.0).unwrap() * T::from(f64::consts::PI).unwrap();
+    four_thirds_pi * volume.powi(3)
 }
 
 pub fn mean<T: BaseFloat>(points: &Vec<Point3<T>>) -> Point3<T> {
@@ -105,4 +111,8 @@ pub enum Line2PlaneClassification<T: BaseFloat> {
     Parallel,
     /// line intersects with the plane
     Intersects(Vector3<T>),
+}
+
+pub fn to_bevy_vec3(point: &Point3<f32>) -> Vec3 {
+    Vec3::new(point.x, point.y, point.z)
 }

@@ -1,13 +1,9 @@
 use bevy::ecs::component::Component;
-use cgmath::{InnerSpace, Point3, Vector3};
 use std::{collections::HashMap, f32::consts::E, sync::atomic::AtomicU32};
 
 use crate::{
     model::entity::{generate_id, Entity},
-    shared::{
-        cell::CellInformation,
-        math::{distance, mean, radius_from_volume},
-    },
+    shared::cell::CellInformation,
 };
 
 pub const SIZE_THRESHOLD: f32 = 20.;
@@ -40,18 +36,13 @@ impl BiologicalCell {
         cell
     }
 
-    pub fn update<'c>(&mut self, near_cells: &HashMap<u64, &'c CellInformation<f32>>) {
+    pub fn grow<'c>(&mut self) -> f32 {
         self.time_lived
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let new_volume = logistic_growth(self.growth_factors)(
+        logistic_growth(self.growth_factors)(
             self.time_lived.load(std::sync::atomic::Ordering::Relaxed),
-        );
-
-        // self.volume = new_volume;
-
-        // self.reposition(near_cells);
-        // println!("Cell {} at {:?}", self.entity_id(), self.position());
+        )
     }
 }
 
