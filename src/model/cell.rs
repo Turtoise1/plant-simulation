@@ -1,10 +1,16 @@
-use bevy::ecs::component::Component;
-use std::{collections::HashMap, f32::consts::E, sync::atomic::AtomicU32};
-
-use crate::{
-    model::entity::{generate_id, Entity},
-    shared::cell::CellInformation,
+use bevy::{
+    ecs::{
+        component::Component,
+        entity::Entity,
+        event::{Event, EventWriter},
+        system::Commands,
+    },
+    utils::HashSet,
 };
+use cgmath::Point3;
+use std::{f32::consts::E, sync::atomic::AtomicU32};
+
+use super::hormone::Phytohormone;
 
 pub const SIZE_THRESHOLD: f32 = 20.;
 
@@ -15,40 +21,57 @@ pub struct GrowthFactors {
     start_value: f32,
 }
 
+#[derive(Event)]
+pub struct CellDivideEvent {
+    pub parent: Entity,
+}
+
+#[derive(Event)]
+pub struct CellSpawnEvent {
+    pub position: Point3<f32>,
+    pub radius: f32,
+    pub tissue: Entity,
+}
+
 #[derive(Debug, Component)]
 pub struct BiologicalCell {
-    id: u64,
-    time_lived: AtomicU32,
+    time_lived: u32,
     growth_factors: GrowthFactors,
+    hormones: HashSet<Phytohormone>,
+    /// reference to the tissue entity this cell belongs to
+    tissue: Entity,
 }
 
 impl BiologicalCell {
-    pub fn new(volume: f32) -> Self {
+    pub fn new(volume: f32, tissue: Entity) -> Self {
         let cell = BiologicalCell {
-            id: generate_id(),
-            time_lived: AtomicU32::new(0),
+            time_lived: 0,
             growth_factors: GrowthFactors {
                 size_threshold: SIZE_THRESHOLD,
-                growth_factor: 0.0005,
+                growth_factor: 0.0003,
                 start_value: volume,
             },
+            hormones: HashSet::new(),
+            tissue,
         };
         cell
     }
 
-    pub fn grow<'c>(&mut self) -> f32 {
-        self.time_lived
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    pub fn update_size(&mut self) -> f32 {
+        self.time_lived += 1;
 
-        logistic_growth(self.growth_factors)(
-            self.time_lived.load(std::sync::atomic::Ordering::Relaxed),
-        )
+        let volume = logistic_growth(self.growth_factors)(self.time_lived);
+
+        volume
     }
-}
 
-impl Entity for BiologicalCell {
-    fn entity_id(&self) -> u64 {
-        self.id
+    pub fn reduce_volume(&mut self, new_volume: f32) {
+        self.time_lived = 0;
+        self.growth_factors.start_value = new_volume;
+    }
+
+    pub fn tissue(&self) -> Entity {
+        self.tissue
     }
 }
 
