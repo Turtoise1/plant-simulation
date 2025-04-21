@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
-use std::fmt::Debug;
+use std::{f32::EPSILON, fmt::Debug};
+
+use crate::shared::math::add_small_random_to_one_direction;
 
 use super::math::{distance, mean, radius_from_volume};
 
@@ -12,17 +14,20 @@ pub struct CellInformation<T: BaseFloat> {
 
 impl<T: BaseFloat + std::iter::Sum> CellInformation<T> {
     /// Updates self.radius according to the new volume and reposition itself according to near cells
-    pub fn update(&mut self, near_cells: &Vec<CellInformation<T>>, new_volume: T) {
+    pub fn update(&mut self, overlapping_cells: &Vec<CellInformation<T>>, new_volume: T) {
         self.radius = radius_from_volume(new_volume);
-        self.reposition(near_cells);
+        self.reposition(overlapping_cells);
     }
 
     /// move self away from near cells
-    fn reposition(&mut self, near_cells: &Vec<CellInformation<T>>) {
+    fn reposition(&mut self, overlapping_cells: &Vec<CellInformation<T>>) {
         let mut positions = vec![];
-        near_cells.iter().for_each(|near| {
-            positions.push(self.get_point_away_from(near));
-        });
+        overlapping_cells
+            .iter()
+            .filter(|other| core_overlap(self, other))
+            .for_each(|core_overlap| {
+                positions.push(self.get_point_away_from(core_overlap));
+            });
         if positions.len() > 0 {
             self.position = mean(&positions);
         }
@@ -35,7 +40,12 @@ impl<T: BaseFloat + std::iter::Sum> CellInformation<T> {
         let r1 = self.radius;
         let r2 = from.radius;
 
-        let direction = Vector3::<T>::new(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z).normalize();
+        let mut direction = Vector3::<T>::new(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z);
+        // prevent normalization with magnitude == 0
+        if direction.magnitude() < T::from(EPSILON).unwrap() {
+            add_small_random_to_one_direction(&mut direction);
+        }
+        direction = direction.normalize();
 
         let current_dist = distance(p1, p2);
         let to_dist = T::max(r1, r2);
@@ -49,10 +59,19 @@ impl<T: BaseFloat + std::iter::Sum> CellInformation<T> {
 }
 
 /// returns whether the cells positions are further away from each other than sum of the radiuses
-pub fn intersect<T: BaseFloat + std::iter::Sum>(
+pub fn overlap<T: BaseFloat + std::iter::Sum>(
     cell1: &CellInformation<T>,
     cell2: &CellInformation<T>,
 ) -> bool {
     let min_distance = cell1.radius + cell2.radius;
     distance(&cell1.position, &cell2.position) < min_distance
+}
+
+/// returns whether the cells positions are further away from each other than the max radius
+pub fn core_overlap<T: BaseFloat + std::iter::Sum>(
+    cell1: &CellInformation<T>,
+    cell2: &CellInformation<T>,
+) -> bool {
+    let max_radius = T::max(cell1.radius, cell2.radius);
+    distance(&cell1.position, &cell2.position) < max_radius
 }

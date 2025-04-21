@@ -120,3 +120,18 @@ pub fn to_bevy_vec3(point: &Point3<f32>) -> Vec3 {
 pub fn to_point3(vec: &Vec3) -> Point3<f32> {
     Point3::<f32>::new(vec.x, vec.y, vec.z)
 }
+
+pub fn add_small_random_to_one_direction<T: BaseFloat>(vec: &mut Vector3<T>) {
+    let rand1 = rand::random::<f32>();
+    let mut rand2 = T::from((rand::random::<f32>() + 0.01) / 100.).unwrap();
+    if rand::random::<bool>() {
+        rand2 = rand2 * T::from(-1.).unwrap();
+    }
+    if rand1 <= 0.33 {
+        vec.x += rand2;
+    } else if rand1 <= 0.66 {
+        vec.y += rand2;
+    } else {
+        vec.z += rand2;
+    }
+}

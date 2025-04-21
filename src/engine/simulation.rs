@@ -6,7 +6,7 @@ use crate::{
         tissue::{Tissue, TissueType},
     },
     shared::{
-        cell::{intersect, CellInformation},
+        cell::{overlap, CellInformation},
         math::{to_bevy_vec3, volume_from_radius},
         overlapping_cells::OverlappingCells,
     },
@@ -19,7 +19,7 @@ pub fn pre_update(mut commands: Commands, query: Query<(Entity, &CellInformation
         let neighbors: Vec<CellInformation<f32>> = all_infos
             .iter()
             .filter(|(other_entity, other_info)| {
-                *other_entity != *entity && intersect(info, other_info)
+                *other_entity != *entity && overlap(info, other_info)
             })
             .map(|(_, info)| (*info).clone())
             .collect();
@@ -31,13 +31,17 @@ pub fn pre_update(mut commands: Commands, query: Query<(Entity, &CellInformation
 
 pub fn update(
     mut cell_query: Query<(
+        Entity,
         &mut Transform,
         &mut BiologicalCell,
         &mut CellInformation<f32>,
         &OverlappingCells<f32>,
     )>,
+    tissue_query: Query<(&Tissue,)>,
+    mut events: EventWriter<CellDivideEvent>,
 ) {
-    for (mut transform, mut bio, mut info, overlapping_cells) in &mut cell_query {
+    // grow cells
+    for (_, mut transform, mut bio, mut info, overlapping_cells) in &mut cell_query {
         let new_volume = bio.update_size();
         info.update(&overlapping_cells.0, new_volume);
         transform.translation = to_bevy_vec3(&info.position);
@@ -45,16 +49,8 @@ pub fn update(
         transform.scale.y = info.radius;
         transform.scale.z = info.radius;
     }
-}
-
-pub fn post_update(
-    cell_query: Query<(Entity, &BiologicalCell, &CellInformation<f32>)>,
-    tissue_query: Query<(&Tissue,)>,
-    mut events: EventWriter<CellDivideEvent>,
-) {
-    // TODO: this does not have to be inside the post update
     // divide cells if they reach a threshold
-    for (entity, bio, info) in cell_query.iter() {
+    for (entity, _, bio, info, _) in cell_query.iter() {
         let tissue_type = &tissue_query.get(bio.tissue()).unwrap().0.tissue_type;
         match tissue_type {
             TissueType::Meristem(_) => {
@@ -68,3 +64,5 @@ pub fn post_update(
         }
     }
 }
+
+pub fn post_update() {}

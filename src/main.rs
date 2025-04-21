@@ -48,6 +48,11 @@ pub fn spawn_cells(mut spawn_events: EventWriter<CellSpawnEvent>, mut commands: 
         radius: 1.,
         tissue: meristem_entity,
     });
+    spawn_events.send(CellSpawnEvent {
+        position: Point3::new(0.0, 0.0, 0.0),
+        radius: 1.,
+        tissue: meristem_entity,
+    });
 }
 
 fn handle_cell_division(
