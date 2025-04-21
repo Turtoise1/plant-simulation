@@ -3936,6 +3936,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_panorbit_camera",
+ "bevy_picking",
  "bytemuck",
  "cgmath",
  "futures",

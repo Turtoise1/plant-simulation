@@ -1,10 +1,5 @@
 use bevy::{
-    ecs::{
-        component::Component,
-        entity::Entity,
-        event::{Event, EventWriter},
-        system::Commands,
-    },
+    ecs::{component::Component, entity::Entity, event::Event},
     utils::HashSet,
 };
 use cgmath::Point3;

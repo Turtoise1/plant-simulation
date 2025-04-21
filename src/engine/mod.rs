@@ -1,4 +1,4 @@
 pub mod camera;
 pub mod selection;
 pub mod simulation;
-mod state;
+pub mod state;

@@ -1,8 +1,12 @@
-use bevy::{ecs::component::Component, math::Vec3};
+use bevy::{
+    ecs::{component::Component, entity::Entity},
+    math::Vec3,
+};
 
 #[derive(Component, Debug)]
 pub struct Tissue {
     pub tissue_type: TissueType,
+    pub cell_refs: Vec<Entity>,
 }
 
 #[derive(Debug)]
@@ -20,7 +24,10 @@ pub enum TissueType {
 
 impl Tissue {
     pub fn new(tissue_type: TissueType) -> Self {
-        Tissue { tissue_type }
+        Tissue {
+            tissue_type,
+            cell_refs: vec![],
+        }
     }
 }
 

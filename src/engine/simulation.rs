@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::{
     model::{
-        cell::{BiologicalCell, CellDivideEvent, SIZE_THRESHOLD},
+        cell::{BiologicalCell, CellDivideEvent, CellSpawnEvent, SIZE_THRESHOLD},
         tissue::{Tissue, TissueType},
     },
     shared::{
@@ -66,3 +66,40 @@ pub fn update(
 }
 
 pub fn post_update() {}
+
+pub fn handle_cell_division(
+    mut divide_events: EventReader<CellDivideEvent>,
+    mut spawn_events: EventWriter<CellSpawnEvent>,
+    mut cell_query: Query<(&mut BiologicalCell, &mut CellInformation<f32>)>,
+    tissue_query: Query<&Tissue>,
+) {
+    for event in divide_events.read() {
+        if let Ok((mut parent_cell, mut info)) = cell_query.get_mut(event.parent) {
+            // reduce volume of parent cell
+            let new_radius = info.radius / 2.;
+            let new_volume = volume_from_radius(new_radius);
+            parent_cell.reduce_volume(new_volume);
+            info.radius = new_radius;
+
+            let tissue_type = &tissue_query.get(parent_cell.tissue()).unwrap().tissue_type;
+            match tissue_type {
+                TissueType::Meristem(properties) => {
+                    let mut position = info.position;
+                    position.x += properties.growing_direction.x;
+                    position.y += properties.growing_direction.y;
+                    position.z += properties.growing_direction.z;
+
+                    // Spawn child cell
+                    spawn_events.send(CellSpawnEvent {
+                        position,
+                        radius: new_radius,
+                        tissue: parent_cell.tissue(),
+                    });
+                }
+                TissueType::Parenchyma => {
+                    println!("Tried to divide a cell in the parenchyma!");
+                }
+            }
+        }
+    }
+}

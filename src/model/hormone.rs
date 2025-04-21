@@ -1,5 +1,3 @@
-use super::cell::GrowthFactors;
-
 #[derive(Clone, Copy, Debug)]
 pub enum Phytohormone {
     /// The amount of auxins, usually between 1 and 100 µg / kg plant material.
