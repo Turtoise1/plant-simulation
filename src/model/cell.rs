@@ -1,9 +1,9 @@
 use bevy::{
     ecs::{component::Component, entity::Entity, event::Event},
-    utils::HashSet,
+    platform::collections::HashSet,
 };
 use cgmath::Point3;
-use std::{f32::consts::E, sync::atomic::AtomicU32};
+use std::f32::consts::E;
 
 use super::hormone::Phytohormone;
 

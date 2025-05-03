@@ -1,8 +1,10 @@
+use bevy_egui::{EguiContextPass, EguiPlugin};
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use cgmath::Point3;
 use engine::{
     camera::spawn_camera,
-    selection::{selection_on_mouse_released, update_material_on, Selected},
+    gui,
+    selection::{self, update_material_on, SelectCellEvent, SelectTissueEvent, Selected},
     simulation,
     state::{handle_tab_to_switch_modes, ApplicationStatePlugin},
 };
@@ -11,7 +13,7 @@ use bevy::color::palettes::tailwind::*;
 use bevy::prelude::*;
 use model::{
     cell::{BiologicalCell, CellDivideEvent, CellSpawnEvent},
-    tissue::{GrowingTissue, Tissue, TissueType},
+    tissue::{self, GrowingTissue, Tissue, TissueType},
 };
 use shared::{cell::CellInformation, math::volume_from_radius};
 
@@ -50,7 +52,7 @@ pub fn handle_spawn_cell_event(
             ))
             .observe(update_material_on::<Pointer<Over>>(hover_matl.clone()))
             .observe(update_material_on::<Pointer<Out>>(white_matl.clone()))
-            .observe(selection_on_mouse_released)
+            .observe(selection::selection_on_mouse_released)
             .id();
         let mut tissue = tissue_query.get_mut(event.tissue).unwrap();
         tissue.cell_refs.push(cell_entity);
@@ -61,13 +63,13 @@ pub fn spawn_cells(mut spawn_events: EventWriter<CellSpawnEvent>, mut commands: 
     let meristem = Tissue::new(TissueType::Meristem(GrowingTissue::new(Vec3::new(
         0., 1., 0.,
     ))));
-    let meristem_entity = commands.spawn(meristem).id();
-    spawn_events.send(CellSpawnEvent {
+    let meristem_entity = commands.spawn((meristem, Selected(false))).id();
+    spawn_events.write(CellSpawnEvent {
         position: Point3::new(0.0, 0.0, 0.0),
         radius: 1.,
         tissue: meristem_entity,
     });
-    spawn_events.send(CellSpawnEvent {
+    spawn_events.write(CellSpawnEvent {
         position: Point3::new(0.0, 0.0, 0.0),
         radius: 1.,
         tissue: meristem_entity,
@@ -76,10 +78,19 @@ pub fn spawn_cells(mut spawn_events: EventWriter<CellSpawnEvent>, mut commands: 
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, PanOrbitCameraPlugin, MeshPickingPlugin))
+        .add_plugins((
+            DefaultPlugins,
+            PanOrbitCameraPlugin,
+            MeshPickingPlugin,
+            EguiPlugin {
+                enable_multipass_for_primary_context: true,
+            },
+        ))
         .add_plugins(ApplicationStatePlugin)
         .add_event::<CellDivideEvent>()
         .add_event::<CellSpawnEvent>()
+        .add_event::<SelectCellEvent>()
+        .add_event::<SelectTissueEvent>()
         .add_systems(Startup, (spawn_camera, spawn_light, spawn_cells))
         .add_systems(PreUpdate, simulation::pre_update)
         .add_systems(
@@ -89,8 +100,14 @@ fn main() {
                 simulation::handle_cell_division,
                 handle_spawn_cell_event,
                 handle_tab_to_switch_modes,
+                selection::handle_select_cell_event,
+                selection::handle_select_tissue_event,
             ),
         )
-        .add_systems(PostUpdate, simulation::post_update)
+        .add_systems(
+            PostUpdate,
+            (simulation::post_update, tissue::update_central_cells),
+        )
+        .add_systems(EguiContextPass, gui::show_tissues_or_cells)
         .run();
 }

@@ -1,6 +1,9 @@
 use bevy::{
     app::Plugin,
-    ecs::system::{Res, ResMut, Resource},
+    ecs::{
+        resource::Resource,
+        system::{Res, ResMut},
+    },
     input::{keyboard::KeyCode, ButtonInput},
 };
 

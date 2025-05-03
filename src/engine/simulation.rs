@@ -55,7 +55,7 @@ pub fn update(
         match tissue_type {
             TissueType::Meristem(_) => {
                 if volume_from_radius(info.radius) > SIZE_THRESHOLD - 1. {
-                    events.send(CellDivideEvent { parent: entity });
+                    events.write(CellDivideEvent { parent: entity });
                 }
             }
             TissueType::Parenchyma => {
@@ -90,7 +90,7 @@ pub fn handle_cell_division(
                     position.z += properties.growing_direction.z;
 
                     // Spawn child cell
-                    spawn_events.send(CellSpawnEvent {
+                    spawn_events.write(CellSpawnEvent {
                         position,
                         radius: new_radius,
                         tissue: parent_cell.tissue(),
