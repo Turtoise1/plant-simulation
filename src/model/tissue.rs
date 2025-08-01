@@ -5,7 +5,10 @@ use bevy::{
     math::Vec3,
 };
 
-use crate::shared::{cell::CellInformation, math::to_bevy_vec3};
+use crate::{
+    model::cell::BiologicalCell,
+    shared::{cell::CellInformation, math::to_bevy_vec3},
+};
 
 use super::cell::CellSpawnEvent;
 
@@ -15,13 +18,13 @@ pub struct Tissue {
     pub cell_refs: Vec<Entity>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct GrowingTissue {
     pub growing_direction: Vec3,
     pub central_cell: Option<Entity>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TissueType {
     /// A tissue of regularly dividing cells.
     Meristem(GrowingTissue),

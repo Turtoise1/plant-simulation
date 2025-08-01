@@ -17,6 +17,8 @@ use model::{
 };
 use shared::{cell::CellInformation, math::volume_from_radius};
 
+use crate::model::cell::CellDifferentiateEvent;
+
 mod engine;
 mod model;
 mod shared;
@@ -36,19 +38,25 @@ pub fn handle_spawn_cell_event(
     // Set up the materials.
     let white_matl = materials.add(Color::WHITE);
     let hover_matl = materials.add(Color::from(CYAN_300));
+    let selected_matl = materials.add(Color::from(YELLOW_300));
 
     for event in spawn_events.read() {
+        let material = if event.selected {
+            selected_matl.clone()
+        } else {
+            white_matl.clone()
+        };
         let cell_entity = commands
             .spawn((
                 Mesh3d(meshes.add(Sphere::new(1.))),
-                MeshMaterial3d(white_matl.clone()),
+                MeshMaterial3d(material),
                 Transform::from_xyz(event.position.x, event.position.y, event.position.z),
                 BiologicalCell::new(volume_from_radius(event.radius), event.tissue),
                 CellInformation::<f32> {
                     position: event.position,
                     radius: event.radius,
                 },
-                Selected(false),
+                Selected(event.selected),
             ))
             .observe(update_material_on::<Pointer<Over>>(hover_matl.clone()))
             .observe(update_material_on::<Pointer<Out>>(white_matl.clone()))
@@ -68,11 +76,13 @@ pub fn spawn_cells(mut spawn_events: EventWriter<CellSpawnEvent>, mut commands: 
         position: Point3::new(0.0, 0.0, 0.0),
         radius: 1.,
         tissue: meristem_entity,
+        selected: false,
     });
     spawn_events.write(CellSpawnEvent {
         position: Point3::new(0.0, 0.0, 0.0),
         radius: 1.,
         tissue: meristem_entity,
+        selected: false,
     });
 }
 
@@ -88,6 +98,7 @@ fn main() {
         ))
         .add_plugins(ApplicationStatePlugin)
         .add_event::<CellDivideEvent>()
+        .add_event::<CellDifferentiateEvent>()
         .add_event::<CellSpawnEvent>()
         .add_event::<SelectCellEvent>()
         .add_event::<SelectTissueEvent>()
@@ -98,6 +109,7 @@ fn main() {
             (
                 simulation::update,
                 simulation::handle_cell_division,
+                simulation::handle_cell_differentiation,
                 handle_spawn_cell_event,
                 handle_tab_to_switch_modes,
                 selection::handle_select_cell_event,

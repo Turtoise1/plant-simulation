@@ -1,11 +1,8 @@
-use bevy::{
-    ecs::{component::Component, entity::Entity, event::Event},
-    platform::collections::HashSet,
-};
+use bevy::ecs::{component::Component, entity::Entity, event::Event};
 use cgmath::Point3;
 use std::f32::consts::E;
 
-use super::hormone::Phytohormone;
+use crate::model::hormone::Phytohormones;
 
 pub const SIZE_THRESHOLD: f32 = 20.;
 
@@ -22,17 +19,23 @@ pub struct CellDivideEvent {
 }
 
 #[derive(Event)]
+pub struct CellDifferentiateEvent {
+    pub cell: Entity,
+}
+
+#[derive(Event)]
 pub struct CellSpawnEvent {
     pub position: Point3<f32>,
     pub radius: f32,
     pub tissue: Entity,
+    pub selected: bool,
 }
 
 #[derive(Debug, Component)]
 pub struct BiologicalCell {
     time_lived: u32,
     growth_factors: GrowthFactors,
-    hormones: HashSet<Phytohormone>,
+    hormones: Phytohormones,
     /// reference to the tissue entity this cell belongs to
     tissue: Entity,
 }
@@ -46,10 +49,14 @@ impl BiologicalCell {
                 growth_factor: 0.0003,
                 start_value: volume,
             },
-            hormones: HashSet::new(),
+            hormones: Phytohormones::new(),
             tissue,
         };
         cell
+    }
+
+    pub fn update_hormones(&mut self) {
+        self.hormones.auxin_level += 0.0005;
     }
 
     pub fn update_size(&mut self) -> f32 {
@@ -67,6 +74,18 @@ impl BiologicalCell {
 
     pub fn tissue(&self) -> Entity {
         self.tissue
+    }
+
+    pub fn update_tissue(&mut self, new_tissue: Entity) {
+        self.tissue = new_tissue;
+    }
+
+    pub fn auxin_level(&self) -> f32 {
+        self.hormones.auxin_level
+    }
+
+    pub fn cytokinin_level(&self) -> f32 {
+        self.hormones.cytokinin_level
     }
 }
 
