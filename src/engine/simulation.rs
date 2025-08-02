@@ -1,11 +1,12 @@
 use bevy::{
-    color::palettes::tailwind::YELLOW_300, ecs::relationship::RelationshipSourceCollection,
+    color::palettes::tailwind::{CYAN_300, YELLOW_300},
+    ecs::relationship::RelationshipSourceCollection,
     prelude::*,
 };
 
 use crate::{
     engine::{
-        selection::Selected,
+        selection::{self, update_material_on, Selected},
         state::{ApplicationState, Level},
     },
     model::{
@@ -94,11 +95,57 @@ pub fn update(
 
 pub fn post_update() {}
 
-pub fn handle_cell_division(
+pub fn handle_spawn_cell_event(
+    mut spawn_events: EventReader<CellSpawnEvent>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut tissue_query: Query<&mut Tissue>,
+) {
+    // Set up the materials.
+    let white_matl = materials.add(Color::WHITE);
+    let hover_matl = materials.add(Color::from(CYAN_300));
+    let selected_matl = materials.add(Color::from(YELLOW_300));
+
+    for event in spawn_events.read() {
+        let material = if event.selected {
+            selected_matl.clone()
+        } else {
+            white_matl.clone()
+        };
+        let cell_entity = commands
+            .spawn((
+                Mesh3d(meshes.add(Sphere::new(1.))),
+                MeshMaterial3d(material),
+                Transform::from_xyz(event.position.x, event.position.y, event.position.z),
+                BiologicalCell::new(volume_from_radius(event.radius), event.tissue),
+                CellInformation::<f32> {
+                    position: event.position,
+                    radius: event.radius,
+                },
+                Selected(event.selected),
+            ))
+            .observe(update_material_on::<Pointer<Over>>(
+                hover_matl.clone(),
+                hover_matl.clone(),
+            ))
+            .observe(update_material_on::<Pointer<Out>>(
+                selected_matl.clone(),
+                white_matl.clone(),
+            ))
+            .observe(selection::selection_on_mouse_released)
+            .id();
+        let mut tissue = tissue_query.get_mut(event.tissue).unwrap();
+        tissue.cell_refs.push(cell_entity);
+    }
+}
+
+pub fn handle_cell_division_events(
     mut divide_events: EventReader<CellDivideEvent>,
     mut spawn_events: EventWriter<CellSpawnEvent>,
     mut cell_query: Query<(&mut BiologicalCell, &mut CellInformation<f32>, &Selected)>,
     tissue_query: Query<(&Tissue, &Selected)>,
+    app_state: Res<ApplicationState>,
 ) {
     for event in divide_events.read() {
         if let Ok((mut parent_cell, mut info, _)) = cell_query.get_mut(event.parent) {
@@ -117,12 +164,16 @@ pub fn handle_cell_division(
                     position.y += properties.growing_direction.y;
                     position.z += properties.growing_direction.z;
 
+                    let selected = match &*app_state {
+                        ApplicationState::Running(Level::Cells) => false,
+                        ApplicationState::Running(Level::Tissues) => tissue_selected.0,
+                    };
                     // Spawn child cell
                     spawn_events.write(CellSpawnEvent {
                         position,
                         radius: new_radius,
                         tissue: parent_cell.tissue(),
-                        selected: tissue_selected.0,
+                        selected,
                     });
                 }
                 TissueType::Parenchyma => {
@@ -133,7 +184,7 @@ pub fn handle_cell_division(
     }
 }
 
-pub fn handle_cell_differentiation(
+pub fn handle_cell_differentiation_events(
     mut events: EventReader<CellDifferentiateEvent>,
     mut cell_query: Query<(
         &mut BiologicalCell,
@@ -173,17 +224,13 @@ pub fn handle_cell_differentiation(
                         // add to new tissue
                         new_tissue.cell_refs.push(event.cell);
                         cell.update_tissue(new_tissue_entity);
-                        match &*app_state {
-                            ApplicationState::Running(level) => {
-                                if *level == Level::Tissues {
-                                    let material = if new_tissue_selected.0 {
-                                        selected_matl.clone()
-                                    } else {
-                                        white_matl.clone()
-                                    };
-                                    cell_material.0 = material;
-                                }
-                            }
+                        if *app_state == ApplicationState::Running(Level::Tissues) {
+                            let material = if new_tissue_selected.0 {
+                                selected_matl.clone()
+                            } else {
+                                white_matl.clone()
+                            };
+                            cell_material.0 = material;
                         }
                     } else {
                         // create new tissue

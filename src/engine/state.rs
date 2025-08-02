@@ -1,6 +1,7 @@
 use bevy::{
     app::Plugin,
     ecs::{
+        event::{Event, EventWriter},
         resource::Resource,
         system::{Res, ResMut},
     },
@@ -13,6 +14,9 @@ impl Plugin for ApplicationStatePlugin {
         app.init_resource::<ApplicationState>();
     }
 }
+
+#[derive(Event)]
+pub struct ApplicationStateChanged {}
 
 #[derive(Resource, PartialEq, Eq)]
 pub enum ApplicationState {
@@ -40,6 +44,7 @@ impl ApplicationState {
 pub fn handle_tab_to_switch_modes(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<ApplicationState>,
+    mut event_writer: EventWriter<ApplicationStateChanged>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Tab) {
         match &mut *state {
@@ -48,7 +53,7 @@ pub fn handle_tab_to_switch_modes(
                     Level::Cells => Level::Tissues,
                     Level::Tissues => Level::Cells,
                 };
-                println!("Switched selection mode to {:?}", current_level);
+                event_writer.write(ApplicationStateChanged {});
             }
         }
     }
