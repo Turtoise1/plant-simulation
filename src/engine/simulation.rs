@@ -1,7 +1,13 @@
-use bevy::{ecs::relationship::RelationshipSourceCollection, prelude::*};
+use bevy::{
+    color::palettes::tailwind::YELLOW_300, ecs::relationship::RelationshipSourceCollection,
+    prelude::*,
+};
 
 use crate::{
-    engine::selection::Selected,
+    engine::{
+        selection::Selected,
+        state::{ApplicationState, Level},
+    },
     model::{
         cell::{
             BiologicalCell, CellDifferentiateEvent, CellDivideEvent, CellSpawnEvent, SIZE_THRESHOLD,
@@ -129,13 +135,21 @@ pub fn handle_cell_division(
 
 pub fn handle_cell_differentiation(
     mut events: EventReader<CellDifferentiateEvent>,
-    mut cell_query: Query<(&mut BiologicalCell, &mut CellInformation<f32>)>,
-    mut tissue_query: Query<(Entity, &mut Tissue)>,
+    mut cell_query: Query<(
+        &mut BiologicalCell,
+        &mut CellInformation<f32>,
+        &mut MeshMaterial3d<StandardMaterial>,
+    )>,
+    mut tissue_query: Query<(Entity, &mut Tissue, &Selected)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
+    app_state: Res<ApplicationState>,
 ) {
+    let white_matl = materials.add(Color::WHITE);
+    let selected_matl = materials.add(Color::from(YELLOW_300));
     for event in events.read() {
-        if let Ok((mut cell, _)) = cell_query.get_mut(event.cell) {
-            let (_, mut old_tissue) = tissue_query.get_mut(cell.tissue()).unwrap();
+        if let Ok((mut cell, _, mut cell_material)) = cell_query.get_mut(event.cell) {
+            let (_, mut old_tissue, _) = tissue_query.get_mut(cell.tissue()).unwrap();
             match old_tissue.tissue_type {
                 TissueType::Meristem(_) => {
                     // remove from old tissue
@@ -151,19 +165,33 @@ pub fn handle_cell_differentiation(
                         );
                     }
 
-                    if let Some((new_tissue_entity, mut new_tissue)) = tissue_query
-                        .iter_mut()
-                        .find(|(_, tissue)| tissue.tissue_type == TissueType::Parenchyma)
+                    if let Some((new_tissue_entity, mut new_tissue, new_tissue_selected)) =
+                        tissue_query
+                            .iter_mut()
+                            .find(|(_, tissue, _)| tissue.tissue_type == TissueType::Parenchyma)
                     {
                         // add to new tissue
                         new_tissue.cell_refs.push(event.cell);
                         cell.update_tissue(new_tissue_entity);
+                        match &*app_state {
+                            ApplicationState::Running(level) => {
+                                if *level == Level::Tissues {
+                                    let material = if new_tissue_selected.0 {
+                                        selected_matl.clone()
+                                    } else {
+                                        white_matl.clone()
+                                    };
+                                    cell_material.0 = material;
+                                }
+                            }
+                        }
                     } else {
                         // create new tissue
                         let mut new_tissue = Tissue::new(TissueType::Parenchyma);
                         new_tissue.cell_refs.push(event.cell);
                         let tissue_entity = commands.spawn((new_tissue, Selected(false)));
                         cell.update_tissue(tissue_entity.id());
+                        cell_material.0 = white_matl.clone();
                     }
                 }
                 _ => {

@@ -14,12 +14,12 @@ impl Plugin for ApplicationStatePlugin {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, PartialEq, Eq)]
 pub enum ApplicationState {
     Running(Level),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Level {
     Cells,
     Tissues,
