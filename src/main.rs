@@ -10,12 +10,12 @@ use engine::{
 };
 
 use bevy::prelude::*;
-use model::{
-    cell::{CellDivideEvent, CellSpawnEvent},
-    tissue::{self, GrowingTissue, Tissue, TissueType},
-};
+use model::tissue::{self, GrowingTissue, Tissue, TissueType};
 
-use crate::{engine::state::ApplicationStateChanged, model::cell::CellDifferentiateEvent};
+use crate::engine::{
+    cell_events::{self, CellDifferentiateEvent, CellDivideEvent, CellSpawnEvent},
+    state::ApplicationStateChanged,
+};
 
 mod engine;
 mod model;
@@ -76,9 +76,9 @@ fn main() {
             Update,
             (
                 simulation::update,
-                simulation::handle_cell_division_events,
-                simulation::handle_cell_differentiation_events,
-                simulation::handle_spawn_cell_event,
+                cell_events::handle_cell_division_events,
+                cell_events::handle_cell_differentiation_events,
+                cell_events::handle_cell_spawn_event,
                 handle_tab_to_switch_modes,
                 selection::handle_select_cell_event,
                 selection::handle_select_tissue_event,

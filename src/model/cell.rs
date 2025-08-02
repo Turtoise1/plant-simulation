@@ -1,5 +1,4 @@
-use bevy::ecs::{component::Component, entity::Entity, event::Event};
-use cgmath::Point3;
+use bevy::ecs::{component::Component, entity::Entity};
 use std::f32::consts::E;
 
 use crate::model::hormone::Phytohormones;
@@ -11,23 +10,6 @@ pub struct GrowthFactors {
     size_threshold: f32,
     growth_factor: f32,
     start_value: f32,
-}
-
-#[derive(Event)]
-pub struct CellDivideEvent {
-    pub parent: Entity,
-}
-
-#[derive(Event)]
-pub struct CellDifferentiateEvent {
-    pub cell: Entity,
-}
-
-#[derive(Event)]
-pub struct CellSpawnEvent {
-    pub position: Point3<f32>,
-    pub radius: f32,
-    pub tissue: Entity,
 }
 
 #[derive(Debug, Component)]

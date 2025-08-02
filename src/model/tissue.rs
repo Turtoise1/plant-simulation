@@ -6,11 +6,9 @@ use bevy::{
 };
 
 use crate::{
-    model::cell::BiologicalCell,
+    engine::cell_events::CellSpawnEvent,
     shared::{cell::CellInformation, math::to_bevy_vec3},
 };
-
-use super::cell::CellSpawnEvent;
 
 #[derive(Component, Debug)]
 pub struct Tissue {
