@@ -28,7 +28,6 @@ pub struct CellSpawnEvent {
     pub position: Point3<f32>,
     pub radius: f32,
     pub tissue: Entity,
-    pub selected: bool,
 }
 
 #[derive(Debug, Component)]

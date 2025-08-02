@@ -32,16 +32,24 @@ pub fn spawn_cells(mut spawn_events: EventWriter<CellSpawnEvent>, mut commands: 
     ))));
     let meristem_entity = commands.spawn((meristem, Selected(false))).id();
     spawn_events.write(CellSpawnEvent {
-        position: Point3::new(0.0, 0.0, 0.0),
-        radius: 1.,
+        position: Point3::new(0.5, 0.0, 0.0),
+        radius: 0.8,
         tissue: meristem_entity,
-        selected: false,
     });
     spawn_events.write(CellSpawnEvent {
-        position: Point3::new(0.0, 0.0, 0.0),
+        position: Point3::new(-0.5, 0.0, 0.0),
         radius: 1.,
         tissue: meristem_entity,
-        selected: false,
+    });
+    spawn_events.write(CellSpawnEvent {
+        position: Point3::new(0.0, 0.0, 0.5),
+        radius: 0.75,
+        tissue: meristem_entity,
+    });
+    spawn_events.write(CellSpawnEvent {
+        position: Point3::new(0.0, 0.0, -0.5),
+        radius: 1.,
+        tissue: meristem_entity,
     });
 }
 

@@ -100,7 +100,7 @@ pub fn handle_spawn_cell_event(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut tissue_query: Query<&mut Tissue>,
+    mut tissue_query: Query<(&mut Tissue, &Selected)>,
 ) {
     // Set up the materials.
     let white_matl = materials.add(Color::WHITE);
@@ -108,7 +108,8 @@ pub fn handle_spawn_cell_event(
     let selected_matl = materials.add(Color::from(YELLOW_300));
 
     for event in spawn_events.read() {
-        let material = if event.selected {
+        let (mut tissue, tissue_selected) = tissue_query.get_mut(event.tissue).unwrap();
+        let material = if tissue_selected.0 {
             selected_matl.clone()
         } else {
             white_matl.clone()
@@ -123,7 +124,7 @@ pub fn handle_spawn_cell_event(
                     position: event.position,
                     radius: event.radius,
                 },
-                Selected(event.selected),
+                Selected(false),
             ))
             .observe(update_material_on::<Pointer<Over>>(
                 hover_matl.clone(),
@@ -135,7 +136,6 @@ pub fn handle_spawn_cell_event(
             ))
             .observe(selection::selection_on_mouse_released)
             .id();
-        let mut tissue = tissue_query.get_mut(event.tissue).unwrap();
         tissue.cell_refs.push(cell_entity);
     }
 }
@@ -144,8 +144,7 @@ pub fn handle_cell_division_events(
     mut divide_events: EventReader<CellDivideEvent>,
     mut spawn_events: EventWriter<CellSpawnEvent>,
     mut cell_query: Query<(&mut BiologicalCell, &mut CellInformation<f32>, &Selected)>,
-    tissue_query: Query<(&Tissue, &Selected)>,
-    app_state: Res<ApplicationState>,
+    tissue_query: Query<&Tissue>,
 ) {
     for event in divide_events.read() {
         if let Ok((mut parent_cell, mut info, _)) = cell_query.get_mut(event.parent) {
@@ -155,7 +154,7 @@ pub fn handle_cell_division_events(
             parent_cell.reduce_volume(new_volume);
             info.radius = new_radius;
 
-            let (tissue, tissue_selected) = tissue_query.get(parent_cell.tissue()).unwrap();
+            let (tissue) = tissue_query.get(parent_cell.tissue()).unwrap();
             let tissue_type = &tissue.tissue_type;
             match tissue_type {
                 TissueType::Meristem(properties) => {
@@ -164,16 +163,11 @@ pub fn handle_cell_division_events(
                     position.y += properties.growing_direction.y;
                     position.z += properties.growing_direction.z;
 
-                    let selected = match &*app_state {
-                        ApplicationState::Running(Level::Cells) => false,
-                        ApplicationState::Running(Level::Tissues) => tissue_selected.0,
-                    };
                     // Spawn child cell
                     spawn_events.write(CellSpawnEvent {
                         position,
                         radius: new_radius,
                         tissue: parent_cell.tissue(),
-                        selected,
                     });
                 }
                 TissueType::Parenchyma => {
