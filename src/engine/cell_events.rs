@@ -49,6 +49,7 @@ pub fn handle_cell_spawn_event(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut tissue_query: Query<(&mut Tissue, &Selected)>,
+    app_state: Res<ApplicationState>,
 ) {
     // Set up the materials.
     let white_matl = materials.add(Color::WHITE);
@@ -57,11 +58,12 @@ pub fn handle_cell_spawn_event(
 
     for event in spawn_events.read() {
         let (mut tissue, tissue_selected) = tissue_query.get_mut(event.tissue).unwrap();
-        let material = if tissue_selected.0 {
-            selected_matl.clone()
-        } else {
-            white_matl.clone()
-        };
+        let material =
+            if tissue_selected.0 && *app_state == ApplicationState::Running(Level::Tissues) {
+                selected_matl.clone()
+            } else {
+                white_matl.clone()
+            };
         let cell_entity = commands
             .spawn((
                 Mesh3d(meshes.add(Sphere::new(1.))),
