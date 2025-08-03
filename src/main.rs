@@ -89,6 +89,6 @@ fn main() {
             PostUpdate,
             (simulation::post_update, tissue::update_central_cells),
         )
-        .add_systems(EguiContextPass, gui::show_tissues_or_cells)
+        .add_systems(EguiContextPass, gui::show_gui)
         .run();
 }

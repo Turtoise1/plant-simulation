@@ -1,4 +1,5 @@
 use bevy::ecs::{component::Component, entity::Entity};
+use rand::random;
 use std::f32::consts::E;
 
 use crate::model::hormone::Phytohormones;
@@ -37,7 +38,7 @@ impl BiologicalCell {
     }
 
     pub fn update_hormones(&mut self) {
-        self.hormones.auxin_level += 0.0005;
+        self.hormones.auxin_level += 0.0008 + rand::random::<f32>() * 0.0001;
     }
 
     pub fn update_size(&mut self) -> f32 {

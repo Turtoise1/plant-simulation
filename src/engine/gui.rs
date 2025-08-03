@@ -1,10 +1,11 @@
 use bevy::ecs::system::{Query, Res};
 use bevy_egui::{
-    egui::{self, scroll_area, Color32, RichText, ScrollArea, Vec2},
+    egui::{self, Color32, RichText, ScrollArea},
     EguiContexts,
 };
 
 use crate::{
+    engine::state::RunningState,
     model::{cell::BiologicalCell, tissue::Tissue},
     shared::cell::CellInformation,
 };
@@ -14,28 +15,45 @@ use super::{
     state::{self, ApplicationState},
 };
 
-pub fn show_tissues_or_cells(
-    contexts: EguiContexts,
+pub fn show_gui(
+    mut contexts: EguiContexts,
     tissue_query: Query<(&Tissue, &Selected)>,
     cell_query: Query<(&CellInformation<f32>, &BiologicalCell, &Selected)>,
-    state: Res<ApplicationState>,
+    mut state: Res<ApplicationState>,
 ) {
+    show_editor(&mut contexts, &mut state);
     match &*state {
-        ApplicationState::Running(level) => match &level {
-            state::Level::Cells => {
-                show_cells(contexts, cell_query);
-            }
-            state::Level::Tissues => {
-                show_tissues(contexts, tissue_query);
-            }
-        },
+        ApplicationState::Running(RunningState { level, speed: _ }) => {
+            match &level {
+                state::Level::Cells => {
+                    show_cells(contexts, cell_query);
+                }
+                state::Level::Tissues => {
+                    show_tissues(contexts, tissue_query);
+                }
+            };
+        }
     };
+}
+
+pub fn show_editor(contexts: &mut EguiContexts, state: &mut Res<ApplicationState>) {
+    match &**state {
+        ApplicationState::Running(RunningState {
+            level: _,
+            mut speed,
+        }) => {
+            egui::Window::new("Editor").show(contexts.ctx_mut(), |ui| {
+                ui.vertical(|ui| {
+                    ui.label("Time: ");
+                    let speed_slider = ui.add(egui::Slider::new(&mut speed, 0.1..=1000.));
+                });
+            });
+        }
+    }
 }
 
 pub fn show_tissues(mut contexts: EguiContexts, tissue_query: Query<(&Tissue, &Selected)>) {
     egui::Window::new("Tissues").show(contexts.ctx_mut(), |ui| {
-        ui.heading("Tissues");
-        ui.separator();
         ScrollArea::vertical().max_height(500.).show(ui, |ui| {
             for (tissue, selected) in tissue_query.iter() {
                 let tissue_string = format!("{} ({})", tissue.tissue_type, tissue.cell_refs.len());
@@ -54,8 +72,6 @@ pub fn show_cells(
     cell_query: Query<(&CellInformation<f32>, &BiologicalCell, &Selected)>,
 ) {
     egui::Window::new("Cells").show(contexts.ctx_mut(), |ui| {
-        ui.heading("Cells");
-        ui.separator();
         ScrollArea::vertical().max_height(500.).show(ui, |ui|{
             ui.vertical(|ui| {
                 for (cell, bio, selected) in cell_query.iter() {

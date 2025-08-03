@@ -17,7 +17,7 @@ use cgmath::Point3;
 use crate::{
     engine::{
         selection::{self, Selected},
-        state::{ApplicationState, Level},
+        state::{ApplicationState, Level, RunningState},
     },
     model::{
         cell::BiologicalCell,
@@ -58,12 +58,20 @@ pub fn handle_cell_spawn_event(
 
     for event in spawn_events.read() {
         let (mut tissue, tissue_selected) = tissue_query.get_mut(event.tissue).unwrap();
-        let material =
-            if tissue_selected.0 && *app_state == ApplicationState::Running(Level::Tissues) {
-                selected_matl.clone()
-            } else {
-                white_matl.clone()
-            };
+        let material = if tissue_selected.0 {
+            match &*app_state {
+                ApplicationState::Running(RunningState {
+                    level: Level::Tissues,
+                    ..
+                }) => selected_matl.clone(),
+                ApplicationState::Running(RunningState {
+                    level: Level::Cells,
+                    ..
+                }) => white_matl.clone(),
+            }
+        } else {
+            white_matl.clone()
+        };
         let cell_entity = commands
             .spawn((
                 Mesh3d(meshes.add(Sphere::new(1.))),
@@ -167,14 +175,20 @@ pub fn handle_cell_differentiation_events(
                         // add to new tissue
                         new_tissue.cell_refs.push(event.cell);
                         cell.update_tissue(new_tissue_entity);
-                        if *app_state == ApplicationState::Running(Level::Tissues) {
-                            let material = if new_tissue_selected.0 {
-                                selected_matl.clone()
-                            } else {
-                                white_matl.clone()
-                            };
-                            cell_material.0 = material;
-                        }
+                        match &*app_state {
+                            ApplicationState::Running(RunningState {
+                                level: Level::Tissues,
+                                ..
+                            }) => {
+                                let material = if new_tissue_selected.0 {
+                                    selected_matl.clone()
+                                } else {
+                                    white_matl.clone()
+                                };
+                                cell_material.0 = material;
+                            }
+                            _ => {}
+                        };
                     } else {
                         // create new tissue
                         let mut new_tissue = Tissue::new(TissueType::Parenchyma);

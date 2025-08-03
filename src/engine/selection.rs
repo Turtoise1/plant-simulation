@@ -17,7 +17,7 @@ use bevy::{
 use bevy_picking::events::{Click, Pointer};
 
 use crate::{
-    engine::state::ApplicationStateChanged,
+    engine::state::{ApplicationStateChanged, RunningState},
     model::{cell::BiologicalCell, tissue::Tissue},
 };
 
@@ -44,19 +44,23 @@ pub fn selection_on_mouse_released(
     mut cell_query: Query<&BiologicalCell>,
 ) {
     match &*state {
-        ApplicationState::Running(level) => match level {
-            Level::Cells => {
-                select_cell_ew.write(SelectCellEvent {
-                    target_cell: click.target,
-                });
-            }
-            Level::Tissues => {
-                let bio_cell = cell_query.get_mut(click.target).unwrap();
-                select_tissue_ew.write(SelectTissueEvent {
-                    target_tissue: bio_cell.tissue(),
-                });
-            }
-        },
+        ApplicationState::Running(RunningState {
+            level: Level::Cells,
+            ..
+        }) => {
+            select_cell_ew.write(SelectCellEvent {
+                target_cell: click.target,
+            });
+        }
+        ApplicationState::Running(RunningState {
+            level: Level::Tissues,
+            ..
+        }) => {
+            let bio_cell = cell_query.get_mut(click.target).unwrap();
+            select_tissue_ew.write(SelectTissueEvent {
+                target_tissue: bio_cell.tissue(),
+            });
+        }
     }
 }
 
@@ -71,12 +75,18 @@ pub fn handle_select_cell_event(
     for select in select_events.read() {
         let (mut material, mut cell_selected) = cell_query.get_mut(select.target_cell).unwrap();
         cell_selected.0 = !cell_selected.0;
-        if *app_state == ApplicationState::Running(Level::Cells) {
-            if cell_selected.0 {
-                material.0 = selected_matl.clone();
-            } else {
-                material.0 = default_matl.clone();
+        match &*app_state {
+            ApplicationState::Running(RunningState {
+                level: Level::Cells,
+                ..
+            }) => {
+                if cell_selected.0 {
+                    material.0 = selected_matl.clone();
+                } else {
+                    material.0 = default_matl.clone();
+                }
             }
+            _ => {}
         }
     }
 }
@@ -93,15 +103,21 @@ pub fn handle_select_tissue_event(
     for select in select_events.read() {
         let (tissue, mut tissue_selected) = tissue_query.get_mut(select.target_tissue).unwrap();
         tissue_selected.0 = !tissue_selected.0;
-        if *app_state == ApplicationState::Running(Level::Tissues) {
-            for cell_entity in tissue.cell_refs.clone() {
-                let mut cell_material = cell_query.get_mut(cell_entity).unwrap();
-                if tissue_selected.0 {
-                    cell_material.0 = selected_matl.clone();
-                } else {
-                    cell_material.0 = default_matl.clone();
+        match &*app_state {
+            ApplicationState::Running(RunningState {
+                level: Level::Tissues,
+                ..
+            }) => {
+                for cell_entity in tissue.cell_refs.clone() {
+                    let mut cell_material = cell_query.get_mut(cell_entity).unwrap();
+                    if tissue_selected.0 {
+                        cell_material.0 = selected_matl.clone();
+                    } else {
+                        cell_material.0 = default_matl.clone();
+                    }
                 }
             }
+            _ => {}
         }
     }
 }
@@ -124,7 +140,10 @@ pub fn handle_application_state_changed_event(
     let selected_matl = materials.add(Color::from(YELLOW_300));
     let default_matl = materials.add(Color::from(WHITE));
     match &*app_state {
-        ApplicationState::Running(Level::Cells) => {
+        ApplicationState::Running(RunningState {
+            level: Level::Cells,
+            ..
+        }) => {
             for (mut material, selected, _) in cell_query {
                 if selected.0 {
                     material.0 = selected_matl.clone();
@@ -133,7 +152,10 @@ pub fn handle_application_state_changed_event(
                 }
             }
         }
-        ApplicationState::Running(Level::Tissues) => {
+        ApplicationState::Running(RunningState {
+            level: Level::Tissues,
+            ..
+        }) => {
             for (mut material, _, cell) in cell_query {
                 if let Ok(selected) = tissue_query.get(cell.tissue()) {
                     if selected.0 {
@@ -168,10 +190,16 @@ pub fn update_material_on<E>(
         if let Ok((mut material, cell_selected, cell)) = cell_query.get_mut(trigger.target()) {
             let selected;
             match &*app_state {
-                ApplicationState::Running(Level::Cells) => {
+                ApplicationState::Running(RunningState {
+                    level: Level::Cells,
+                    ..
+                }) => {
                     selected = cell_selected.0;
                 }
-                ApplicationState::Running(Level::Tissues) => {
+                ApplicationState::Running(RunningState {
+                    level: Level::Tissues,
+                    ..
+                }) => {
                     selected = tissue_query.get(cell.tissue()).unwrap().0;
                 }
             }

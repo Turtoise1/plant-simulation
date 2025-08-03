@@ -18,9 +18,15 @@ impl Plugin for ApplicationStatePlugin {
 #[derive(Event)]
 pub struct ApplicationStateChanged {}
 
-#[derive(Resource, PartialEq, Eq)]
+#[derive(Resource, PartialEq)]
 pub enum ApplicationState {
-    Running(Level),
+    Running(RunningState),
+}
+
+#[derive(PartialEq)]
+pub struct RunningState {
+    pub level: Level,
+    pub speed: f32,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,7 +37,10 @@ pub enum Level {
 
 impl Default for ApplicationState {
     fn default() -> Self {
-        ApplicationState::Running(Level::Cells)
+        ApplicationState::Running(RunningState {
+            level: Level::Cells,
+            speed: 1.0,
+        })
     }
 }
 
@@ -48,8 +57,8 @@ pub fn handle_tab_to_switch_modes(
 ) {
     if keyboard_input.just_pressed(KeyCode::Tab) {
         match &mut *state {
-            ApplicationState::Running(current_level) => {
-                *current_level = match current_level {
+            ApplicationState::Running(RunningState { level, speed: _ }) => {
+                *level = match level {
                     Level::Cells => Level::Tissues,
                     Level::Tissues => Level::Cells,
                 };
