@@ -104,9 +104,8 @@ pub fn handle_cell_division_events(
             parent_cell.reduce_volume(new_volume);
             info.radius = new_radius;
 
-            let (tissue) = tissue_query.get(parent_cell.tissue()).unwrap();
-            let tissue_type = &tissue.tissue_type;
-            match tissue_type {
+            let tissue = tissue_query.get(parent_cell.tissue()).unwrap();
+            match &tissue.tissue_type {
                 TissueType::Meristem(properties) => {
                     let mut position = info.position;
                     position.x += properties.growing_direction.x;
@@ -153,7 +152,7 @@ pub fn handle_cell_differentiation_events(
                         old_tissue.cell_refs.remove(index);
                     } else {
                         panic!(
-                            "{:?} not found in tissue {:?} with cell refs {:?}",
+                            "Cell {:?} not found in tissue {:?} with cell refs {:?}",
                             event.cell,
                             cell.tissue(),
                             old_tissue.cell_refs
