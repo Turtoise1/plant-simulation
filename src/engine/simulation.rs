@@ -1,7 +1,10 @@
 use bevy::prelude::*;
 
 use crate::{
-    engine::cell_events::{CellDifferentiateEvent, CellDivideEvent},
+    engine::{
+        cell_events::{CellDifferentiateEvent, CellDivideEvent},
+        state::{ApplicationState, RunningState, SimulationTime},
+    },
     model::{
         cell::{BiologicalCell, SIZE_THRESHOLD},
         tissue::{Tissue, TissueType},
@@ -30,6 +33,19 @@ pub fn pre_update(mut commands: Commands, query: Query<(Entity, &CellInformation
     }
 }
 
+pub fn update_simulation_time(
+    time: Res<Time>,
+    state: Res<ApplicationState>,
+    mut sim_time: ResMut<SimulationTime>,
+) {
+    match &*state {
+        ApplicationState::Running(RunningState { speed, .. }) => {
+            sim_time.delta_secs = time.delta_secs() * speed;
+            sim_time.elapsed += sim_time.delta_secs;
+        }
+    }
+}
+
 pub fn update(
     mut cell_query: Query<(
         Entity,
@@ -41,11 +57,12 @@ pub fn update(
     tissue_query: Query<(&Tissue,)>,
     mut divide_event_writer: EventWriter<CellDivideEvent>,
     mut differentiate_event_writer: EventWriter<CellDifferentiateEvent>,
+    sim_time: Res<SimulationTime>,
 ) {
     // grow cells
     for (_, mut transform, mut bio, mut info, overlapping_cells) in &mut cell_query {
-        let new_volume = bio.update_size();
-        bio.update_hormones();
+        let new_volume = bio.update_size(sim_time.elapsed);
+        bio.update_hormones(sim_time.delta_secs);
         info.update(&overlapping_cells.0, new_volume);
         transform.translation = to_bevy_vec3(&info.position);
         transform.scale.x = info.radius;

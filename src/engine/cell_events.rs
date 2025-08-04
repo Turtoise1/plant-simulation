@@ -17,7 +17,7 @@ use cgmath::Point3;
 use crate::{
     engine::{
         selection::{self, Selected},
-        state::{ApplicationState, Level, RunningState},
+        state::{ApplicationState, Level, RunningState, SimulationTime},
     },
     model::{
         cell::BiologicalCell,
@@ -50,6 +50,7 @@ pub fn handle_cell_spawn_event(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut tissue_query: Query<(&mut Tissue, &Selected)>,
     app_state: Res<ApplicationState>,
+    sim_time: Res<SimulationTime>,
 ) {
     // Set up the materials.
     let white_matl = materials.add(Color::WHITE);
@@ -77,7 +78,11 @@ pub fn handle_cell_spawn_event(
                 Mesh3d(meshes.add(Sphere::new(1.))),
                 MeshMaterial3d(material),
                 Transform::from_xyz(event.position.x, event.position.y, event.position.z),
-                BiologicalCell::new(volume_from_radius(event.radius), event.tissue),
+                BiologicalCell::new(
+                    volume_from_radius(event.radius),
+                    event.tissue,
+                    sim_time.elapsed,
+                ),
                 CellInformation::<f32> {
                     position: event.position,
                     radius: event.radius,
@@ -103,13 +108,14 @@ pub fn handle_cell_division_events(
     mut spawn_events: EventWriter<CellSpawnEvent>,
     mut cell_query: Query<(&mut BiologicalCell, &mut CellInformation<f32>, &Selected)>,
     tissue_query: Query<&Tissue>,
+    sim_time: Res<SimulationTime>,
 ) {
     for event in divide_events.read() {
         if let Ok((mut parent_cell, mut info, _)) = cell_query.get_mut(event.parent) {
             // reduce volume of parent cell
             let new_radius = info.radius / 2.;
             let new_volume = volume_from_radius(new_radius);
-            parent_cell.reduce_volume(new_volume);
+            parent_cell.reduce_volume(new_volume, sim_time.elapsed);
             info.radius = new_radius;
 
             let tissue = tissue_query.get(parent_cell.tissue()).unwrap();

@@ -1,5 +1,4 @@
 use bevy::ecs::{component::Component, entity::Entity};
-use rand::random;
 use std::f32::consts::E;
 
 use crate::model::hormone::Phytohormones;
@@ -15,7 +14,7 @@ pub struct GrowthFactors {
 
 #[derive(Debug, Component)]
 pub struct BiologicalCell {
-    time_lived: u32,
+    birth_time: f32,
     growth_factors: GrowthFactors,
     hormones: Phytohormones,
     /// reference to the tissue entity this cell belongs to
@@ -23,9 +22,9 @@ pub struct BiologicalCell {
 }
 
 impl BiologicalCell {
-    pub fn new(volume: f32, tissue: Entity) -> Self {
+    pub fn new(volume: f32, tissue: Entity, sim_time: f32) -> Self {
         let cell = BiologicalCell {
-            time_lived: 0,
+            birth_time: sim_time,
             growth_factors: GrowthFactors {
                 size_threshold: SIZE_THRESHOLD,
                 growth_factor: 0.0003,
@@ -37,20 +36,18 @@ impl BiologicalCell {
         cell
     }
 
-    pub fn update_hormones(&mut self) {
-        self.hormones.auxin_level += 0.0008 + rand::random::<f32>() * 0.0001;
+    pub fn update_hormones(&mut self, sim_delta_secs: f32) {
+        self.hormones.auxin_level += (0.0005 + rand::random::<f32>() * 0.00001) * sim_delta_secs;
     }
 
-    pub fn update_size(&mut self) -> f32 {
-        self.time_lived += 1;
-
-        let volume = logistic_growth(self.growth_factors)(self.time_lived);
+    pub fn update_size(&mut self, sim_time: f32) -> f32 {
+        let volume = logistic_growth(self.growth_factors)(sim_time - self.birth_time);
 
         volume
     }
 
-    pub fn reduce_volume(&mut self, new_volume: f32) {
-        self.time_lived = 0;
+    pub fn reduce_volume(&mut self, new_volume: f32, sim_time: f32) {
+        self.birth_time = sim_time;
         self.growth_factors.start_value = new_volume;
     }
 
@@ -71,10 +68,10 @@ impl BiologicalCell {
     }
 }
 
-fn logistic_growth(growth_factors: GrowthFactors) -> impl Fn(u32) -> f32 {
+fn logistic_growth(growth_factors: GrowthFactors) -> impl Fn(f32) -> f32 {
     // f'(t)=k*f(t)*(G-f(t))
     // => f(t)=1/(1+e^(-k*G*t)*(G/f(0)-1))
-    return move |t: u32| {
+    return move |t: f32| {
         growth_factors.size_threshold
             / (1.
                 + f32::powf(

@@ -12,6 +12,7 @@ pub struct ApplicationStatePlugin;
 impl Plugin for ApplicationStatePlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app.init_resource::<ApplicationState>();
+        app.init_resource::<SimulationTime>();
     }
 }
 
@@ -27,6 +28,12 @@ pub enum ApplicationState {
 pub struct RunningState {
     pub level: Level,
     pub speed: f32,
+}
+
+#[derive(Resource, PartialEq, Default)]
+pub struct SimulationTime {
+    pub elapsed: f32,
+    pub delta_secs: f32,
 }
 
 #[derive(Debug, PartialEq, Eq)]

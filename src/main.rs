@@ -75,6 +75,7 @@ fn main() {
         .add_systems(
             Update,
             (
+                simulation::update_simulation_time,
                 simulation::update,
                 cell_events::handle_cell_division_events,
                 cell_events::handle_cell_differentiation_events,
