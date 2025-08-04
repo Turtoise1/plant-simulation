@@ -1,4 +1,4 @@
-use bevy::ecs::system::{Query, Res};
+use bevy::ecs::system::{Query, Res, ResMut};
 use bevy_egui::{
     egui::{self, Color32, RichText, ScrollArea},
     EguiContexts,
@@ -19,7 +19,7 @@ pub fn show_gui(
     mut contexts: EguiContexts,
     tissue_query: Query<(&Tissue, &Selected)>,
     cell_query: Query<(&CellInformation<f32>, &BiologicalCell, &Selected)>,
-    mut state: Res<ApplicationState>,
+    mut state: ResMut<ApplicationState>,
 ) {
     show_editor(&mut contexts, &mut state);
     match &*state {
@@ -36,16 +36,14 @@ pub fn show_gui(
     };
 }
 
-pub fn show_editor(contexts: &mut EguiContexts, state: &mut Res<ApplicationState>) {
-    match &**state {
-        ApplicationState::Running(RunningState {
-            level: _,
-            mut speed,
-        }) => {
+pub fn show_editor(contexts: &mut EguiContexts, state: &mut ResMut<ApplicationState>) {
+    match &mut **state {
+        ApplicationState::Running(running_state) => {
             egui::Window::new("Editor").show(contexts.ctx_mut(), |ui| {
                 ui.vertical(|ui| {
                     ui.label("Time: ");
-                    let speed_slider = ui.add(egui::Slider::new(&mut speed, 0.1..=1000.));
+                    let speed_slider =
+                        ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=1000.));
                 });
             });
         }
