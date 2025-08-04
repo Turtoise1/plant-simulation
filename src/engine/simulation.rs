@@ -71,17 +71,20 @@ pub fn update(
     }
     // divide cells if they reach a threshold
     for (entity, _, bio, info, _) in cell_query.iter() {
-        let tissue_type = &tissue_query.get(bio.tissue()).unwrap().0.tissue_type;
-        match tissue_type {
-            TissueType::Meristem(_) => {
-                if volume_from_radius(info.radius) > SIZE_THRESHOLD - 1. {
-                    divide_event_writer.write(CellDivideEvent { parent: entity });
+        if let Ok(tissue) = tissue_query.get(bio.tissue()) {
+            match tissue.0.tissue_type {
+                TissueType::Meristem(_) => {
+                    if volume_from_radius(info.radius) > SIZE_THRESHOLD - 1. {
+                        divide_event_writer.write(CellDivideEvent { parent: entity });
+                    }
+                }
+                TissueType::Parenchyma => {
+                    // do not divide
                 }
             }
-            TissueType::Parenchyma => {
-                // do not divide
-            }
-        }
+        } else {
+            println!("Cannot find tissue with id {:?}", bio.tissue());
+        };
     }
     // handle differentiation
     for (entity, _, bio, _, _) in cell_query.iter() {

@@ -157,57 +157,62 @@ pub fn handle_cell_differentiation_events(
     let selected_matl = materials.add(Color::from(bevy::color::palettes::tailwind::YELLOW_300));
     for event in events.read() {
         if let Ok((mut cell, _, mut cell_material)) = cell_query.get_mut(event.cell) {
-            let (_, mut old_tissue, _) = tissue_query.get_mut(cell.tissue()).unwrap();
-            match old_tissue.tissue_type {
-                TissueType::Meristem(_) => {
-                    // remove from old tissue
-                    let index = old_tissue.cell_refs.iter().position(|c| *c == event.cell);
-                    if let Some(index) = index {
-                        old_tissue.cell_refs.remove(index);
-                    } else {
-                        panic!(
-                            "Cell {:?} not found in tissue {:?} with cell refs {:?}",
-                            event.cell,
-                            cell.tissue(),
-                            old_tissue.cell_refs
-                        );
-                    }
+            if let Ok((_, mut old_tissue, _)) = tissue_query.get_mut(cell.tissue()) {
+                match old_tissue.tissue_type {
+                    TissueType::Meristem(_) => {
+                        // remove from old tissue
+                        let index = old_tissue.cell_refs.iter().position(|c| *c == event.cell);
+                        if let Some(index) = index {
+                            old_tissue.cell_refs.remove(index);
+                        } else {
+                            panic!(
+                                "Cell {:?} not found in tissue {:?} with cell refs {:?}",
+                                event.cell,
+                                cell.tissue(),
+                                old_tissue.cell_refs
+                            );
+                        }
 
-                    if let Some((new_tissue_entity, mut new_tissue, new_tissue_selected)) =
-                        tissue_query
-                            .iter_mut()
-                            .find(|(_, tissue, _)| tissue.tissue_type == TissueType::Parenchyma)
-                    {
-                        // add to new tissue
-                        new_tissue.cell_refs.push(event.cell);
-                        cell.update_tissue(new_tissue_entity);
-                        match &*app_state {
-                            ApplicationState::Running(RunningState {
-                                level: Level::Tissues,
-                                ..
-                            }) => {
-                                let material = if new_tissue_selected.0 {
-                                    selected_matl.clone()
-                                } else {
-                                    white_matl.clone()
-                                };
-                                cell_material.0 = material;
-                            }
-                            _ => {}
-                        };
-                    } else {
-                        // create new tissue
-                        let mut new_tissue = Tissue::new(TissueType::Parenchyma);
-                        new_tissue.cell_refs.push(event.cell);
-                        let tissue_entity = commands.spawn((new_tissue, Selected(false)));
-                        cell.update_tissue(tissue_entity.id());
-                        cell_material.0 = white_matl.clone();
+                        if let Some((new_tissue_entity, mut new_tissue, new_tissue_selected)) =
+                            tissue_query
+                                .iter_mut()
+                                .find(|(_, tissue, _)| tissue.tissue_type == TissueType::Parenchyma)
+                        {
+                            // add to new tissue
+                            new_tissue.cell_refs.push(event.cell);
+                            cell.update_tissue(new_tissue_entity);
+                            match &*app_state {
+                                ApplicationState::Running(RunningState {
+                                    level: Level::Tissues,
+                                    ..
+                                }) => {
+                                    let material = if new_tissue_selected.0 {
+                                        selected_matl.clone()
+                                    } else {
+                                        white_matl.clone()
+                                    };
+                                    cell_material.0 = material;
+                                }
+                                _ => {}
+                            };
+                        } else {
+                            // create new tissue
+                            let mut new_tissue = Tissue::new(TissueType::Parenchyma);
+                            new_tissue.cell_refs.push(event.cell);
+                            let tissue_entity = commands.spawn((new_tissue, Selected(false)));
+                            cell.update_tissue(tissue_entity.id());
+                            cell_material.0 = white_matl.clone();
+                        }
+                    }
+                    _ => {
+                        println!("Only meristem cells can differentiate")
                     }
                 }
-                _ => {
-                    println!("Only meristem cells can differentiate")
-                }
+            } else {
+                println!("Cannot find tissue with id {:?}", cell.tissue());
             }
+        } else {
+            println!("Cannot find cell with id {:?}", event.cell);
         }
     }
 }

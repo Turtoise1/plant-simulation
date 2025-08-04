@@ -23,7 +23,10 @@ mod shared;
 
 pub fn spawn_light(mut commands: Commands) {
     // light
-    commands.spawn((PointLight::default(), Transform::from_xyz(10.0, 12.0, 4.0)));
+    commands.spawn((
+        DirectionalLight::default(),
+        Transform::from_rotation(Quat::from_rotation_x(5.)),
+    ));
 }
 
 pub fn spawn_cells(mut spawn_events: EventWriter<CellSpawnEvent>, mut commands: Commands) {
