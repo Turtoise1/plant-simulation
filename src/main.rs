@@ -15,11 +15,11 @@ use model::tissue::{self, Tissue, TissueType};
 use crate::{
     engine::{
         cell_events::{self, CellDifferentiateEvent, CellDivideEvent, CellSpawnEvent},
-        state::{ApplicationState, ApplicationStateChanged},
+        state::{self, ApplicationStateChanged, PlantState},
     },
     model::{
+        hormone::Phytohormones,
         organ::{Organ, OrganConfig, OrganType},
-        tissue::TissueConfig,
     },
 };
 
@@ -38,44 +38,43 @@ pub fn spawn_light(mut commands: Commands) {
 pub fn spawn_cells(
     mut spawn_events: EventWriter<CellSpawnEvent>,
     mut commands: Commands,
-    app_state: Res<ApplicationState>,
+    plant_state: Res<PlantState>,
 ) {
-    match &*app_state {
-        ApplicationState::Running(app_state) => {
-            let stem = Organ::new(OrganType::Stem, OrganConfig::new());
-            let stem_entity = commands.spawn((stem, Selected(false))).id();
-            let meristem = Tissue::new(
-                TissueType::Meristem,
-                TissueConfig::read_from_configs(
-                    app_state.species.clone(),
-                    OrganType::Stem,
-                    TissueType::Meristem,
-                ),
-                stem_entity,
-            );
-            let meristem_entity = commands.spawn((meristem, Selected(false))).id();
-            spawn_events.write(CellSpawnEvent {
-                position: Point3::new(0.5, 0.0, 0.0),
-                radius: 0.8,
-                tissue: meristem_entity,
-            });
-            spawn_events.write(CellSpawnEvent {
-                position: Point3::new(-0.5, 0.0, 0.0),
-                radius: 1.,
-                tissue: meristem_entity,
-            });
-            spawn_events.write(CellSpawnEvent {
-                position: Point3::new(0.0, 0.0, 0.5),
-                radius: 0.75,
-                tissue: meristem_entity,
-            });
-            spawn_events.write(CellSpawnEvent {
-                position: Point3::new(0.0, 0.0, -0.5),
-                radius: 1.,
-                tissue: meristem_entity,
-            });
-        }
-    }
+    let stem = Organ::new(OrganType::Stem, OrganConfig::new());
+    let stem_entity = commands.spawn((stem, Selected(false))).id();
+    let meristem = Tissue::new(
+        TissueType::Meristem,
+        plant_state
+            .tissue_config(&OrganType::Stem, &TissueType::Meristem)
+            .unwrap()
+            .clone(),
+        stem_entity,
+    );
+    let meristem_entity = commands.spawn((meristem, Selected(false))).id();
+    spawn_events.write(CellSpawnEvent {
+        position: Point3::new(0.5, 0.0, 0.0),
+        radius: 0.8,
+        tissue: meristem_entity,
+        hormones: Phytohormones::new(),
+    });
+    spawn_events.write(CellSpawnEvent {
+        position: Point3::new(-0.5, 0.0, 0.0),
+        radius: 1.,
+        tissue: meristem_entity,
+        hormones: Phytohormones::new(),
+    });
+    spawn_events.write(CellSpawnEvent {
+        position: Point3::new(0.0, 0.0, 0.5),
+        radius: 0.75,
+        tissue: meristem_entity,
+        hormones: Phytohormones::new(),
+    });
+    spawn_events.write(CellSpawnEvent {
+        position: Point3::new(0.0, 0.0, -0.5),
+        radius: 1.,
+        tissue: meristem_entity,
+        hormones: Phytohormones::new(),
+    });
 }
 
 fn main() {
@@ -95,8 +94,19 @@ fn main() {
         .add_event::<CellSpawnEvent>()
         .add_event::<SelectCellEvent>()
         .add_event::<SelectTissueEvent>()
-        .add_systems(Startup, (spawn_camera, spawn_light, spawn_cells))
-        .add_systems(PreUpdate, simulation::pre_update)
+        .add_systems(
+            Startup,
+            (
+                spawn_camera,
+                spawn_light,
+                spawn_cells,
+                state::setup_config_watcher,
+            ),
+        )
+        .add_systems(
+            PreUpdate,
+            (simulation::pre_update, state::update_plant_state),
+        )
         .add_systems(
             Update,
             (

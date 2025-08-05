@@ -12,7 +12,7 @@ pub enum OrganType {
     Leaf,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct OrganConfig {
     pub tissues: HashMap<TissueType, TissueConfig>,
 }

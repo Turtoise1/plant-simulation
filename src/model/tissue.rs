@@ -8,10 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     engine::cell_events::CellSpawnEvent,
-    model::{
-        organ::OrganType,
-        species::{PlantSpecies, SpeciesId},
-    },
     shared::{cell::CellInformation, math::to_bevy_vec3},
 };
 
@@ -23,7 +19,7 @@ pub struct Tissue {
     pub config: TissueConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TissueConfig {
     pub max_cell_volume: f32,
     pub auxin_production_rate: f32,
@@ -36,40 +32,6 @@ impl Default for TissueConfig {
             max_cell_volume: 20.,
             auxin_production_rate: 0.,
             growing_config: None,
-        }
-    }
-}
-
-impl TissueConfig {
-    pub fn read_from_configs(
-        species_id: SpeciesId,
-        organ_type: OrganType,
-        tissue_type: TissueType,
-    ) -> TissueConfig {
-        let mut path = "configs/species/".to_owned();
-        path.push_str(species_id.to_string().as_str());
-        path.push_str(".ron");
-        let species: PlantSpecies = ron::from_str(
-            std::fs::read_to_string(path.as_str())
-                .expect(format!("Failed to read file {:?}", path).as_str())
-                .as_str(),
-        )
-        .expect("Failed to parse plant species");
-        // let serialized = ron::ser::to_string_pretty(&config, Default::default()).expect("Failed to serialize");
-        if let Some(organ) = species.organs.get(&organ_type) {
-            if let Some(tissue) = organ.tissues.get(&tissue_type) {
-                tissue.clone()
-            } else {
-                panic!(
-                    "Can not find tissue of type {:?} for organ of type {:?} in species with id {:?}!",
-                    tissue_type, organ_type, species_id
-                );
-            }
-        } else {
-            panic!(
-                "Can not find organ of type {:?} in species with id {:?}!",
-                organ_type, species_id
-            );
         }
     }
 }

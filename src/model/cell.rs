@@ -5,40 +5,47 @@ use crate::model::{hormone::Phytohormones, tissue::TissueConfig};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GrowthFactors {
-    size_threshold: f32,
     growth_factor: f32,
     start_value: f32,
+    size_threshold: f32,
 }
 
 #[derive(Debug, Component)]
 pub struct Cell {
     birth_time: f32,
     growth_factors: GrowthFactors,
-    auxin_production_rate: f32,
     hormones: Phytohormones,
     /// reference to the tissue entity this cell belongs to
     tissue: Entity,
+    tissue_config: TissueConfig,
 }
 
 impl Cell {
-    pub fn new(volume: f32, tissue: Entity, sim_time: f32, tissue_config: TissueConfig) -> Self {
+    pub fn new(
+        volume: f32,
+        tissue: Entity,
+        sim_time: f32,
+        hormones: Phytohormones,
+        tissue_config: TissueConfig,
+    ) -> Self {
         let cell = Cell {
             birth_time: sim_time,
             growth_factors: GrowthFactors {
-                size_threshold: tissue_config.max_cell_volume,
                 growth_factor: 0.0003,
                 start_value: volume,
+                size_threshold: tissue_config.max_cell_volume,
             },
-            auxin_production_rate: tissue_config.auxin_production_rate,
-            hormones: Phytohormones::new(),
+            hormones,
             tissue,
+            tissue_config,
         };
         cell
     }
 
     pub fn update_hormones(&mut self, sim_delta_secs: f32) {
-        let random_factor = rand::random::<f32>() * self.auxin_production_rate;
-        self.hormones.auxin_level += (self.auxin_production_rate + random_factor) * sim_delta_secs;
+        let random_factor = rand::random::<f32>() * self.tissue_config.auxin_production_rate;
+        self.hormones.auxin_level +=
+            (self.tissue_config.auxin_production_rate + random_factor) * sim_delta_secs;
     }
 
     pub fn update_size(&mut self, sim_time: f32) -> f32 {
@@ -47,9 +54,10 @@ impl Cell {
         volume
     }
 
-    pub fn reduce_volume(&mut self, new_volume: f32, sim_time: f32) {
+    pub fn on_divide(&mut self, new_volume: f32, sim_time: f32) {
         self.birth_time = sim_time;
         self.growth_factors.start_value = new_volume;
+        self.hormones.auxin_level /= 2.;
     }
 
     pub fn tissue(&self) -> Entity {
@@ -66,6 +74,11 @@ impl Cell {
 
     pub fn cytokinin_level(&self) -> f32 {
         self.hormones.cytokinin_level
+    }
+
+    pub fn update_tissue_config(&mut self, tissue_config: TissueConfig) {
+        self.growth_factors.size_threshold = tissue_config.max_cell_volume;
+        self.tissue_config = tissue_config;
     }
 }
 

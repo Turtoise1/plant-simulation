@@ -1,21 +1,14 @@
-use std::{collections::HashMap, fmt::Display};
-
-use bevy::{
-    asset::uuid::{uuid, Uuid},
-    ecs::resource::Resource,
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    sync::{Arc, Mutex},
 };
-use serde::{de::IntoDeserializer, Deserialize, Serialize};
+
+use serde::{Deserialize, Serialize};
 
 use crate::model::organ::{OrganConfig, OrganType};
 
-#[derive(Resource)]
-pub struct PlantConfigs {
-    pub species: HashMap<SpeciesId, PlantSpecies>,
-    /// When a config file has been changed, this can be set to true to update the config in the next update iteration
-    pub dirty: bool,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct SpeciesId(&'static str);
 
 impl Display for SpeciesId {
@@ -24,9 +17,57 @@ impl Display for SpeciesId {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct PlantSpecies {
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct SpeciesConfig {
     pub organs: HashMap<OrganType, OrganConfig>,
 }
 
 pub const EQUISETUM_ID: SpeciesId = SpeciesId("Equisetum arvense");
+
+#[derive(Debug)]
+pub struct Species {
+    pub id: SpeciesId,
+    pub dirty: Arc<Mutex<bool>>,
+    pub config: SpeciesConfig,
+}
+
+impl PartialEq for Species {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.config == other.config
+            && *self.dirty.lock().unwrap() == *other.dirty.lock().unwrap()
+    }
+}
+
+impl Species {
+    pub fn update_from_config(&mut self) {
+        let mut path = "configs/species/".to_owned();
+        path.push_str(self.id.to_string().as_str());
+        path.push_str(".ron");
+        let config: SpeciesConfig = ron::from_str(
+            std::fs::read_to_string(path.as_str())
+                .expect(format!("Failed to read file {:?}", path).as_str())
+                .as_str(),
+        )
+        .expect("Failed to parse plant species");
+        self.config = config;
+        *self.dirty.lock().unwrap() = false;
+    }
+
+    pub fn read_from_config(id: SpeciesId) -> Self {
+        let mut path = "configs/species/".to_owned();
+        path.push_str(id.to_string().as_str());
+        path.push_str(".ron");
+        let config: SpeciesConfig = ron::from_str(
+            std::fs::read_to_string(path.as_str())
+                .expect(format!("Failed to read file {:?}", path).as_str())
+                .as_str(),
+        )
+        .expect("Failed to parse plant species");
+        Self {
+            id,
+            config,
+            dirty: Arc::new(Mutex::new(false)),
+        }
+    }
+}

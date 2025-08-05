@@ -11,18 +11,20 @@ use bevy::{
     render::mesh::{Mesh, Mesh3d},
     transform::components::Transform,
 };
+
 use bevy_picking::events::{Out, Over, Pointer};
 use cgmath::Point3;
 
 use crate::{
     engine::{
         selection::{self, Selected},
-        state::{ApplicationState, Level, RunningState, SimulationTime},
+        state::{ApplicationState, Level, PlantState, RunningState, SimulationTime},
     },
     model::{
         cell::Cell,
+        hormone::Phytohormones,
         organ::{Organ, OrganType},
-        tissue::{Tissue, TissueConfig, TissueType},
+        tissue::{Tissue, TissueType},
     },
     shared::{cell::CellInformation, math::volume_from_radius},
 };
@@ -42,6 +44,7 @@ pub struct CellSpawnEvent {
     pub position: Point3<f32>,
     pub radius: f32,
     pub tissue: Entity,
+    pub hormones: Phytohormones,
 }
 
 pub fn handle_cell_spawn_event(
@@ -52,6 +55,7 @@ pub fn handle_cell_spawn_event(
     mut tissue_query: Query<(&mut Tissue, &Selected)>,
     organ_query: Query<(&Organ, &Selected)>,
     app_state: Res<ApplicationState>,
+    plant_state: Res<PlantState>,
     sim_time: Res<SimulationTime>,
 ) {
     // Set up the materials.
@@ -69,11 +73,6 @@ pub fn handle_cell_spawn_event(
                 } else {
                     white_matl.clone()
                 };
-                let tissue_config = TissueConfig::read_from_configs(
-                    app_state.species.clone(),
-                    organ.kind.clone(),
-                    tissue.kind.clone(),
-                );
                 let cell_entity = commands
                     .spawn((
                         Mesh3d(meshes.add(Sphere::new(1.))),
@@ -83,7 +82,11 @@ pub fn handle_cell_spawn_event(
                             volume_from_radius(event.radius),
                             event.tissue,
                             sim_time.elapsed,
-                            tissue_config,
+                            event.hormones,
+                            plant_state
+                                .tissue_config(&organ.kind, &tissue.kind)
+                                .unwrap()
+                                .clone(),
                         ),
                         CellInformation::<f32> {
                             position: event.position,
@@ -115,18 +118,18 @@ pub fn handle_cell_division_events(
     sim_time: Res<SimulationTime>,
 ) {
     for event in divide_events.read() {
-        if let Ok((mut parent_cell, mut info, _)) = cell_query.get_mut(event.parent) {
+        if let Ok((mut parent_cell, mut cell_info, _)) = cell_query.get_mut(event.parent) {
             // reduce volume of parent cell
-            let new_radius = info.radius / 2.;
+            let new_radius = cell_info.radius / 2.;
             let new_volume = volume_from_radius(new_radius);
-            parent_cell.reduce_volume(new_volume, sim_time.elapsed);
-            info.radius = new_radius;
+            parent_cell.on_divide(new_volume, sim_time.elapsed);
+            cell_info.radius = new_radius;
 
             let tissue = tissue_query.get(parent_cell.tissue()).unwrap();
             match &tissue.kind {
                 TissueType::Meristem => {
                     if let Some(config) = &tissue.config.growing_config {
-                        let mut position = info.position;
+                        let mut position = cell_info.position;
                         position.x += config.growing_direction.x;
                         position.y += config.growing_direction.y;
                         position.z += config.growing_direction.z;
@@ -136,6 +139,7 @@ pub fn handle_cell_division_events(
                             position,
                             radius: new_radius,
                             tissue: parent_cell.tissue(),
+                            hormones: Phytohormones::new(),
                         });
                     } else {
                         println!("Cannot find growing config for meristem!");
@@ -157,9 +161,11 @@ pub fn handle_cell_differentiation_events(
         &mut MeshMaterial3d<StandardMaterial>,
     )>,
     mut tissue_query: Query<(Entity, &mut Tissue, &Selected)>,
+    organ_query: Query<&Organ>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
     app_state: Res<ApplicationState>,
+    plant_state: Res<PlantState>,
 ) {
     let white_matl = materials.add(Color::WHITE);
     let selected_matl = materials.add(Color::from(bevy::color::palettes::tailwind::YELLOW_300));
@@ -190,6 +196,15 @@ pub fn handle_cell_differentiation_events(
                             // add to new tissue
                             new_tissue.cell_refs.push(event.cell);
                             cell.update_tissue(new_tissue_entity);
+                            let organ = organ_query.get(organ_ref).expect(
+                                format!("Can not find organ with id {:?}", organ_ref).as_str(),
+                            );
+                            cell.update_tissue_config(
+                                plant_state
+                                    .tissue_config(&organ.kind, &new_tissue.kind)
+                                    .unwrap()
+                                    .clone(),
+                            );
                             match &*app_state {
                                 ApplicationState::Running(RunningState {
                                     level: Level::Tissues,
@@ -205,24 +220,18 @@ pub fn handle_cell_differentiation_events(
                                 _ => {}
                             };
                         } else {
-                            match &*app_state {
-                                ApplicationState::Running(state) => {
-                                    let mut new_tissue = Tissue::new(
-                                        TissueType::Parenchyma,
-                                        TissueConfig::read_from_configs(
-                                            state.species.clone(),
-                                            OrganType::Stem,
-                                            TissueType::Parenchyma,
-                                        ),
-                                        organ_ref,
-                                    );
-                                    new_tissue.cell_refs.push(event.cell);
-                                    let tissue_entity =
-                                        commands.spawn((new_tissue, Selected(false)));
-                                    cell.update_tissue(tissue_entity.id());
-                                    cell_material.0 = white_matl.clone();
-                                }
-                            }
+                            let mut new_tissue = Tissue::new(
+                                TissueType::Parenchyma,
+                                plant_state
+                                    .tissue_config(&OrganType::Stem, &TissueType::Parenchyma)
+                                    .unwrap()
+                                    .clone(),
+                                organ_ref,
+                            );
+                            new_tissue.cell_refs.push(event.cell);
+                            let tissue_entity = commands.spawn((new_tissue, Selected(false)));
+                            cell.update_tissue(tissue_entity.id());
+                            cell_material.0 = white_matl.clone();
                         }
                     }
                     _ => {
