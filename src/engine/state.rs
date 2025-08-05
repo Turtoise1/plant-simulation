@@ -8,6 +8,8 @@ use bevy::{
     input::{keyboard::KeyCode, ButtonInput},
 };
 
+use crate::model::species::{SpeciesId, EQUISETUM_ID};
+
 pub struct ApplicationStatePlugin;
 impl Plugin for ApplicationStatePlugin {
     fn build(&self, app: &mut bevy::app::App) {
@@ -26,6 +28,7 @@ pub enum ApplicationState {
 
 #[derive(PartialEq)]
 pub struct RunningState {
+    pub species: SpeciesId,
     pub level: Level,
     pub speed: f32,
 }
@@ -45,6 +48,7 @@ pub enum Level {
 impl Default for ApplicationState {
     fn default() -> Self {
         ApplicationState::Running(RunningState {
+            species: EQUISETUM_ID,
             level: Level::Cells,
             speed: 1.0,
         })
@@ -64,7 +68,7 @@ pub fn handle_tab_to_switch_modes(
 ) {
     if keyboard_input.just_pressed(KeyCode::Tab) {
         match &mut *state {
-            ApplicationState::Running(RunningState { level, speed: _ }) => {
+            ApplicationState::Running(RunningState { level, .. }) => {
                 *level = match level {
                     Level::Cells => Level::Tissues,
                     Level::Tissues => Level::Cells,

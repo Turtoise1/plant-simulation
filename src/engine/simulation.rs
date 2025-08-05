@@ -6,7 +6,7 @@ use crate::{
         state::{ApplicationState, RunningState, SimulationTime},
     },
     model::{
-        cell::{BiologicalCell, SIZE_THRESHOLD},
+        cell::Cell,
         tissue::{Tissue, TissueType},
     },
     shared::{
@@ -50,11 +50,11 @@ pub fn update(
     mut cell_query: Query<(
         Entity,
         &mut Transform,
-        &mut BiologicalCell,
+        &mut Cell,
         &mut CellInformation<f32>,
         &OverlappingCells<f32>,
     )>,
-    tissue_query: Query<(&Tissue,)>,
+    tissue_query: Query<&Tissue>,
     mut divide_event_writer: EventWriter<CellDivideEvent>,
     mut differentiate_event_writer: EventWriter<CellDifferentiateEvent>,
     sim_time: Res<SimulationTime>,
@@ -72,9 +72,9 @@ pub fn update(
     // divide cells if they reach a threshold
     for (entity, _, bio, info, _) in cell_query.iter() {
         if let Ok(tissue) = tissue_query.get(bio.tissue()) {
-            match tissue.0.tissue_type {
-                TissueType::Meristem(_) => {
-                    if volume_from_radius(info.radius) > SIZE_THRESHOLD - 1. {
+            match tissue.kind {
+                TissueType::Meristem => {
+                    if volume_from_radius(info.radius) > tissue.config.max_cell_volume - 1. {
                         divide_event_writer.write(CellDivideEvent { parent: entity });
                     }
                 }
@@ -88,9 +88,9 @@ pub fn update(
     }
     // handle differentiation
     for (entity, _, bio, _, _) in cell_query.iter() {
-        let tissue_type = &tissue_query.get(bio.tissue()).unwrap().0.tissue_type;
+        let tissue_type = &tissue_query.get(bio.tissue()).unwrap().kind;
         match tissue_type {
-            TissueType::Meristem(_) => {
+            TissueType::Meristem => {
                 let auxin = bio.auxin_level();
                 let cytokinin = bio.cytokinin_level();
                 if auxin > 0.8 && cytokinin < 0.2 {

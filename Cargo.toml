@@ -38,6 +38,8 @@ strip = "debuginfo"
 cgmath = "0.18.0"
 rand = "0.8.5"
 bevy = { version = "0.16", features = ["dynamic_linking"] }
-bevy_panorbit_camera = {version = "0.26", features = ["bevy_egui"]}
+bevy_panorbit_camera = { version = "0.26", features = ["bevy_egui"] }
 bevy_picking = "0.16"
 bevy_egui = "0.34.1"
+ron = "0.10.1"
+serde = "1.0.219"

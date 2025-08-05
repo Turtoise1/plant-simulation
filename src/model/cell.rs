@@ -1,9 +1,7 @@
 use bevy::ecs::{component::Component, entity::Entity};
 use std::f32::consts::E;
 
-use crate::model::hormone::Phytohormones;
-
-pub const SIZE_THRESHOLD: f32 = 20.;
+use crate::model::{hormone::Phytohormones, tissue::TissueConfig};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GrowthFactors {
@@ -13,23 +11,25 @@ pub struct GrowthFactors {
 }
 
 #[derive(Debug, Component)]
-pub struct BiologicalCell {
+pub struct Cell {
     birth_time: f32,
     growth_factors: GrowthFactors,
+    auxin_production_rate: f32,
     hormones: Phytohormones,
     /// reference to the tissue entity this cell belongs to
     tissue: Entity,
 }
 
-impl BiologicalCell {
-    pub fn new(volume: f32, tissue: Entity, sim_time: f32) -> Self {
-        let cell = BiologicalCell {
+impl Cell {
+    pub fn new(volume: f32, tissue: Entity, sim_time: f32, tissue_config: TissueConfig) -> Self {
+        let cell = Cell {
             birth_time: sim_time,
             growth_factors: GrowthFactors {
-                size_threshold: SIZE_THRESHOLD,
+                size_threshold: tissue_config.max_cell_volume,
                 growth_factor: 0.0003,
                 start_value: volume,
             },
+            auxin_production_rate: tissue_config.auxin_production_rate,
             hormones: Phytohormones::new(),
             tissue,
         };
@@ -37,7 +37,8 @@ impl BiologicalCell {
     }
 
     pub fn update_hormones(&mut self, sim_delta_secs: f32) {
-        self.hormones.auxin_level += (0.0005 + rand::random::<f32>() * 0.00001) * sim_delta_secs;
+        let random_factor = rand::random::<f32>() * self.auxin_production_rate;
+        self.hormones.auxin_level += (self.auxin_production_rate + random_factor) * sim_delta_secs;
     }
 
     pub fn update_size(&mut self, sim_time: f32) -> f32 {

@@ -20,8 +20,9 @@ use crate::{
         state::{ApplicationState, Level, RunningState, SimulationTime},
     },
     model::{
-        cell::BiologicalCell,
-        tissue::{Tissue, TissueType},
+        cell::Cell,
+        organ::{Organ, OrganType},
+        tissue::{Tissue, TissueConfig, TissueType},
     },
     shared::{cell::CellInformation, math::volume_from_radius},
 };
@@ -49,6 +50,7 @@ pub fn handle_cell_spawn_event(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut tissue_query: Query<(&mut Tissue, &Selected)>,
+    organ_query: Query<(&Organ, &Selected)>,
     app_state: Res<ApplicationState>,
     sim_time: Res<SimulationTime>,
 ) {
@@ -57,56 +59,58 @@ pub fn handle_cell_spawn_event(
     let hover_matl = materials.add(Color::from(bevy::color::palettes::tailwind::CYAN_300));
     let selected_matl = materials.add(Color::from(bevy::color::palettes::tailwind::YELLOW_300));
 
-    for event in spawn_events.read() {
-        let (mut tissue, tissue_selected) = tissue_query.get_mut(event.tissue).unwrap();
-        let material = if tissue_selected.0 {
-            match &*app_state {
-                ApplicationState::Running(RunningState {
-                    level: Level::Tissues,
-                    ..
-                }) => selected_matl.clone(),
-                ApplicationState::Running(RunningState {
-                    level: Level::Cells,
-                    ..
-                }) => white_matl.clone(),
+    match &*app_state {
+        ApplicationState::Running(app_state) => {
+            for event in spawn_events.read() {
+                let (mut tissue, tissue_selected) = tissue_query.get_mut(event.tissue).unwrap();
+                let (organ, _) = organ_query.get(tissue.organ_ref).unwrap();
+                let material = if tissue_selected.0 && app_state.level == Level::Tissues {
+                    selected_matl.clone()
+                } else {
+                    white_matl.clone()
+                };
+                let tissue_config = TissueConfig::read_from_configs(
+                    app_state.species.clone(),
+                    organ.kind.clone(),
+                    tissue.kind.clone(),
+                );
+                let cell_entity = commands
+                    .spawn((
+                        Mesh3d(meshes.add(Sphere::new(1.))),
+                        MeshMaterial3d(material),
+                        Transform::from_xyz(event.position.x, event.position.y, event.position.z),
+                        Cell::new(
+                            volume_from_radius(event.radius),
+                            event.tissue,
+                            sim_time.elapsed,
+                            tissue_config,
+                        ),
+                        CellInformation::<f32> {
+                            position: event.position,
+                            radius: event.radius,
+                        },
+                        Selected(false),
+                    ))
+                    .observe(selection::update_material_on::<Pointer<Over>>(
+                        hover_matl.clone(),
+                        hover_matl.clone(),
+                    ))
+                    .observe(selection::update_material_on::<Pointer<Out>>(
+                        selected_matl.clone(),
+                        white_matl.clone(),
+                    ))
+                    .observe(selection::selection_on_mouse_released)
+                    .id();
+                tissue.cell_refs.push(cell_entity);
             }
-        } else {
-            white_matl.clone()
-        };
-        let cell_entity = commands
-            .spawn((
-                Mesh3d(meshes.add(Sphere::new(1.))),
-                MeshMaterial3d(material),
-                Transform::from_xyz(event.position.x, event.position.y, event.position.z),
-                BiologicalCell::new(
-                    volume_from_radius(event.radius),
-                    event.tissue,
-                    sim_time.elapsed,
-                ),
-                CellInformation::<f32> {
-                    position: event.position,
-                    radius: event.radius,
-                },
-                Selected(false),
-            ))
-            .observe(selection::update_material_on::<Pointer<Over>>(
-                hover_matl.clone(),
-                hover_matl.clone(),
-            ))
-            .observe(selection::update_material_on::<Pointer<Out>>(
-                selected_matl.clone(),
-                white_matl.clone(),
-            ))
-            .observe(selection::selection_on_mouse_released)
-            .id();
-        tissue.cell_refs.push(cell_entity);
+        }
     }
 }
 
 pub fn handle_cell_division_events(
     mut divide_events: EventReader<CellDivideEvent>,
     mut spawn_events: EventWriter<CellSpawnEvent>,
-    mut cell_query: Query<(&mut BiologicalCell, &mut CellInformation<f32>, &Selected)>,
+    mut cell_query: Query<(&mut Cell, &mut CellInformation<f32>, &Selected)>,
     tissue_query: Query<&Tissue>,
     sim_time: Res<SimulationTime>,
 ) {
@@ -119,19 +123,23 @@ pub fn handle_cell_division_events(
             info.radius = new_radius;
 
             let tissue = tissue_query.get(parent_cell.tissue()).unwrap();
-            match &tissue.tissue_type {
-                TissueType::Meristem(properties) => {
-                    let mut position = info.position;
-                    position.x += properties.growing_direction.x;
-                    position.y += properties.growing_direction.y;
-                    position.z += properties.growing_direction.z;
+            match &tissue.kind {
+                TissueType::Meristem => {
+                    if let Some(config) = &tissue.config.growing_config {
+                        let mut position = info.position;
+                        position.x += config.growing_direction.x;
+                        position.y += config.growing_direction.y;
+                        position.z += config.growing_direction.z;
 
-                    // Spawn child cell
-                    spawn_events.write(CellSpawnEvent {
-                        position,
-                        radius: new_radius,
-                        tissue: parent_cell.tissue(),
-                    });
+                        // Spawn child cell
+                        spawn_events.write(CellSpawnEvent {
+                            position,
+                            radius: new_radius,
+                            tissue: parent_cell.tissue(),
+                        });
+                    } else {
+                        println!("Cannot find growing config for meristem!");
+                    }
                 }
                 TissueType::Parenchyma => {
                     println!("Tried to divide a cell in the parenchyma!");
@@ -144,7 +152,7 @@ pub fn handle_cell_division_events(
 pub fn handle_cell_differentiation_events(
     mut events: EventReader<CellDifferentiateEvent>,
     mut cell_query: Query<(
-        &mut BiologicalCell,
+        &mut Cell,
         &mut CellInformation<f32>,
         &mut MeshMaterial3d<StandardMaterial>,
     )>,
@@ -158,8 +166,9 @@ pub fn handle_cell_differentiation_events(
     for event in events.read() {
         if let Ok((mut cell, _, mut cell_material)) = cell_query.get_mut(event.cell) {
             if let Ok((_, mut old_tissue, _)) = tissue_query.get_mut(cell.tissue()) {
-                match old_tissue.tissue_type {
-                    TissueType::Meristem(_) => {
+                let organ_ref = old_tissue.organ_ref.clone();
+                match old_tissue.kind {
+                    TissueType::Meristem => {
                         // remove from old tissue
                         let index = old_tissue.cell_refs.iter().position(|c| *c == event.cell);
                         if let Some(index) = index {
@@ -176,7 +185,7 @@ pub fn handle_cell_differentiation_events(
                         if let Some((new_tissue_entity, mut new_tissue, new_tissue_selected)) =
                             tissue_query
                                 .iter_mut()
-                                .find(|(_, tissue, _)| tissue.tissue_type == TissueType::Parenchyma)
+                                .find(|(_, tissue, _)| tissue.kind == TissueType::Parenchyma)
                         {
                             // add to new tissue
                             new_tissue.cell_refs.push(event.cell);
@@ -196,12 +205,24 @@ pub fn handle_cell_differentiation_events(
                                 _ => {}
                             };
                         } else {
-                            // create new tissue
-                            let mut new_tissue = Tissue::new(TissueType::Parenchyma);
-                            new_tissue.cell_refs.push(event.cell);
-                            let tissue_entity = commands.spawn((new_tissue, Selected(false)));
-                            cell.update_tissue(tissue_entity.id());
-                            cell_material.0 = white_matl.clone();
+                            match &*app_state {
+                                ApplicationState::Running(state) => {
+                                    let mut new_tissue = Tissue::new(
+                                        TissueType::Parenchyma,
+                                        TissueConfig::read_from_configs(
+                                            state.species.clone(),
+                                            OrganType::Stem,
+                                            TissueType::Parenchyma,
+                                        ),
+                                        organ_ref,
+                                    );
+                                    new_tissue.cell_refs.push(event.cell);
+                                    let tissue_entity =
+                                        commands.spawn((new_tissue, Selected(false)));
+                                    cell.update_tissue(tissue_entity.id());
+                                    cell_material.0 = white_matl.clone();
+                                }
+                            }
                         }
                     }
                     _ => {

@@ -18,7 +18,7 @@ use bevy_picking::events::{Click, Pointer};
 
 use crate::{
     engine::state::{ApplicationStateChanged, RunningState},
-    model::{cell::BiologicalCell, tissue::Tissue},
+    model::{cell::Cell, tissue::Tissue},
 };
 
 use super::state::{ApplicationState, Level};
@@ -41,7 +41,7 @@ pub fn selection_on_mouse_released(
     state: Res<ApplicationState>,
     mut select_cell_ew: EventWriter<SelectCellEvent>,
     mut select_tissue_ew: EventWriter<SelectTissueEvent>,
-    mut cell_query: Query<&BiologicalCell>,
+    mut cell_query: Query<&Cell>,
 ) {
     match &*state {
         ApplicationState::Running(RunningState {
@@ -94,8 +94,8 @@ pub fn handle_select_cell_event(
 pub fn handle_select_tissue_event(
     mut select_events: EventReader<SelectTissueEvent>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cell_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<BiologicalCell>>,
-    mut tissue_query: Query<(&Tissue, &mut Selected), Without<BiologicalCell>>,
+    mut cell_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<Cell>>,
+    mut tissue_query: Query<(&Tissue, &mut Selected), Without<Cell>>,
     app_state: Res<ApplicationState>,
 ) {
     let selected_matl = materials.add(Color::from(YELLOW_300));
@@ -128,7 +128,7 @@ pub fn handle_application_state_changed_event(
     cell_query: Query<(
         &mut MeshMaterial3d<StandardMaterial>,
         &Selected,
-        &BiologicalCell,
+        &Cell,
     )>,
     tissue_query: Query<&Selected, With<Tissue>>,
     app_state: Res<ApplicationState>,
@@ -178,7 +178,7 @@ pub fn update_material_on<E>(
     Query<(
         &mut MeshMaterial3d<StandardMaterial>,
         &Selected,
-        &BiologicalCell,
+        &Cell,
     )>,
     Query<&Selected, With<Tissue>>,
     Res<ApplicationState>,

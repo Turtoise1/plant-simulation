@@ -1,4 +1,4 @@
-use bevy::ecs::system::{Query, Res, ResMut};
+use bevy::ecs::system::{Query, ResMut};
 use bevy_egui::{
     egui::{self, Color32, RichText, ScrollArea},
     EguiContexts,
@@ -6,7 +6,7 @@ use bevy_egui::{
 
 use crate::{
     engine::state::RunningState,
-    model::{cell::BiologicalCell, tissue::Tissue},
+    model::{cell::Cell, tissue::Tissue},
     shared::cell::CellInformation,
 };
 
@@ -18,12 +18,12 @@ use super::{
 pub fn show_gui(
     mut contexts: EguiContexts,
     tissue_query: Query<(&Tissue, &Selected)>,
-    cell_query: Query<(&CellInformation<f32>, &BiologicalCell, &Selected)>,
+    cell_query: Query<(&CellInformation<f32>, &Cell, &Selected)>,
     mut state: ResMut<ApplicationState>,
 ) {
     show_editor(&mut contexts, &mut state);
     match &*state {
-        ApplicationState::Running(RunningState { level, speed: _ }) => {
+        ApplicationState::Running(RunningState { level, .. }) => {
             match &level {
                 state::Level::Cells => {
                     show_cells(contexts, cell_query);
@@ -42,8 +42,7 @@ pub fn show_editor(contexts: &mut EguiContexts, state: &mut ResMut<ApplicationSt
             egui::Window::new("Editor").show(contexts.ctx_mut(), |ui| {
                 ui.vertical(|ui| {
                     ui.label("Time: ");
-                    let speed_slider =
-                        ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=1000.));
+                    ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=1000.));
                 });
             });
         }
@@ -54,7 +53,7 @@ pub fn show_tissues(mut contexts: EguiContexts, tissue_query: Query<(&Tissue, &S
     egui::Window::new("Tissues").show(contexts.ctx_mut(), |ui| {
         ScrollArea::vertical().max_height(500.).show(ui, |ui| {
             for (tissue, selected) in tissue_query.iter() {
-                let tissue_string = format!("{} ({})", tissue.tissue_type, tissue.cell_refs.len());
+                let tissue_string = format!("{} ({})", tissue.kind, tissue.cell_refs.len());
                 let mut tissue_text = RichText::new(tissue_string);
                 if selected.0 {
                     tissue_text = tissue_text.color(Color32::YELLOW);
@@ -67,7 +66,7 @@ pub fn show_tissues(mut contexts: EguiContexts, tissue_query: Query<(&Tissue, &S
 
 pub fn show_cells(
     mut contexts: EguiContexts,
-    cell_query: Query<(&CellInformation<f32>, &BiologicalCell, &Selected)>,
+    cell_query: Query<(&CellInformation<f32>, &Cell, &Selected)>,
 ) {
     egui::Window::new("Cells").show(contexts.ctx_mut(), |ui| {
         ScrollArea::vertical().max_height(500.).show(ui, |ui|{
