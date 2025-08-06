@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
 use std::{f32::EPSILON, fmt::Debug};
 
-use crate::shared::math::add_small_random_to_one_direction;
+use crate::shared::{math::add_small_random_to_one_direction, overlapping_cells::OverlappingCells};
 
 use super::math::{distance, mean, radius_from_volume};
 
@@ -14,18 +14,19 @@ pub struct CellInformation<T: BaseFloat> {
 
 impl<T: BaseFloat + std::iter::Sum> CellInformation<T> {
     /// Updates self.radius according to the new volume and reposition itself according to near cells
-    pub fn update(&mut self, overlapping_cells: &Vec<CellInformation<T>>, new_volume: T) {
+    pub fn update(&mut self, overlapping_cells: &OverlappingCells<T>, new_volume: T) {
         self.radius = radius_from_volume(new_volume);
         self.reposition(overlapping_cells);
     }
 
     /// move self away from near cells
-    fn reposition(&mut self, overlapping_cells: &Vec<CellInformation<T>>) {
+    fn reposition(&mut self, overlapping_cells: &OverlappingCells<T>) {
         let mut positions = vec![];
         overlapping_cells
+            .0
             .iter()
-            .filter(|other| core_overlap(self, other))
-            .for_each(|core_overlap| {
+            .filter(|(_, other, _)| core_overlap(self, other))
+            .for_each(|(_, core_overlap, _)| {
                 positions.push(self.get_point_away_from(core_overlap));
             });
         if positions.len() > 0 {

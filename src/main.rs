@@ -18,7 +18,7 @@ use crate::{
         state::{self, ApplicationStateChanged, PlantState},
     },
     model::{
-        hormone::Phytohormones,
+        hormone::{self, HormoneFlowEvent, Phytohormones},
         organ::{Organ, OrganConfig, OrganType},
     },
 };
@@ -51,29 +51,31 @@ pub fn spawn_cells(
         stem_entity,
     );
     let meristem_entity = commands.spawn((meristem, Selected(false))).id();
+    let mut hormones = Phytohormones::new();
+    hormones.auxin_level = 0.4;
     spawn_events.write(CellSpawnEvent {
         position: Point3::new(0.5, 0.0, 0.0),
         radius: 0.8,
         tissue: meristem_entity,
-        hormones: Phytohormones::new(),
+        hormones: hormones.clone(),
     });
     spawn_events.write(CellSpawnEvent {
         position: Point3::new(-0.5, 0.0, 0.0),
         radius: 1.,
         tissue: meristem_entity,
-        hormones: Phytohormones::new(),
+        hormones: hormones.clone(),
     });
     spawn_events.write(CellSpawnEvent {
         position: Point3::new(0.0, 0.0, 0.5),
         radius: 0.75,
         tissue: meristem_entity,
-        hormones: Phytohormones::new(),
+        hormones: hormones.clone(),
     });
     spawn_events.write(CellSpawnEvent {
         position: Point3::new(0.0, 0.0, -0.5),
         radius: 1.,
         tissue: meristem_entity,
-        hormones: Phytohormones::new(),
+        hormones: hormones.clone(),
     });
 }
 
@@ -94,6 +96,7 @@ fn main() {
         .add_event::<CellSpawnEvent>()
         .add_event::<SelectCellEvent>()
         .add_event::<SelectTissueEvent>()
+        .add_event::<HormoneFlowEvent>()
         .add_systems(
             Startup,
             (
@@ -112,10 +115,11 @@ fn main() {
             (
                 simulation::update_simulation_time,
                 simulation::update,
+                handle_tab_to_switch_modes,
                 cell_events::handle_cell_division_events,
                 cell_events::handle_cell_differentiation_events,
                 cell_events::handle_cell_spawn_event,
-                handle_tab_to_switch_modes,
+                cell_events::handle_hormone_flow_events,
                 selection::handle_select_cell_event,
                 selection::handle_select_tissue_event,
                 selection::handle_application_state_changed_event,

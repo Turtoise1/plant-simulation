@@ -5,6 +5,7 @@ SpeciesConfig (
                 Meristem : TissueConfig (
                     max_cell_volume : 20.0,
                     auxin_production_rate : 0.0005,
+                    diffusion_factor: 0.0001,
                     growing_config : Some( GrowingConfig(
                         growing_direction : (0.0, 1.0, 0.0),
                         central_cell : None
@@ -13,6 +14,7 @@ SpeciesConfig (
                 Parenchyma : TissueConfig (
                     max_cell_volume : 20.0,
                     auxin_production_rate : 0.0,
+                    diffusion_factor: 0.00001
                 )
             }
         )

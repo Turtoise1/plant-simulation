@@ -1,3 +1,5 @@
+use bevy::ecs::{entity::Entity, event::Event};
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Phytohormones {
     /// The amount of auxins, usually between 1 and 100 µg / kg plant material.
@@ -15,4 +17,10 @@ impl Phytohormones {
             cytokinin_level: 0.0,
         }
     }
+}
+
+#[derive(Event, Debug, Clone)]
+pub struct HormoneFlowEvent {
+    pub target_cell: Entity,
+    pub amount: Phytohormones,
 }

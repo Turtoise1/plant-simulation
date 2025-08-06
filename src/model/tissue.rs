@@ -24,6 +24,7 @@ pub struct TissueConfig {
     pub max_cell_volume: f32,
     pub auxin_production_rate: f32,
     pub growing_config: Option<GrowingConfig>,
+    pub diffusion_factor: f32,
 }
 
 impl Default for TissueConfig {
@@ -32,6 +33,7 @@ impl Default for TissueConfig {
             max_cell_volume: 20.,
             auxin_production_rate: 0.,
             growing_config: None,
+            diffusion_factor: 0.0001,
         }
     }
 }

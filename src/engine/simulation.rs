@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy::prelude::*;
 
 use crate::{
@@ -7,29 +9,36 @@ use crate::{
     },
     model::{
         cell::Cell,
+        hormone::{HormoneFlowEvent, Phytohormones},
         tissue::{Tissue, TissueType},
     },
     shared::{
         cell::{overlap, CellInformation},
-        math::{to_bevy_vec3, volume_from_radius},
+        math::to_bevy_vec3,
         overlapping_cells::OverlappingCells,
     },
 };
 
-pub fn pre_update(mut commands: Commands, query: Query<(Entity, &CellInformation<f32>)>) {
-    let all_infos: Vec<(Entity, &CellInformation<f32>)> = query.iter().collect();
+pub fn pre_update(mut commands: Commands, query: Query<(Entity, &CellInformation<f32>, &Cell)>) {
+    let cells: Vec<(Entity, &CellInformation<f32>, &Cell)> = query.iter().collect();
 
-    for (entity, info) in &all_infos {
-        let neighbors: Vec<CellInformation<f32>> = all_infos
+    for (entity, info, _) in query.iter() {
+        let neighbors: Vec<(Entity, CellInformation<f32>, Phytohormones)> = cells
             .iter()
-            .filter(|(other_entity, other_info)| {
-                *other_entity != *entity && overlap(info, other_info)
+            .filter(|(other_entity, other_info, _)| {
+                *other_entity != entity && overlap(info, other_info)
             })
-            .map(|(_, info)| (*info).clone())
+            .map(|(other_entity, other_info, other_cell)| {
+                (
+                    *other_entity,
+                    (*other_info).clone(),
+                    other_cell.hormones().clone(),
+                )
+            })
             .collect();
 
         // potentially empty neighbors but that's good
-        commands.entity(*entity).insert(OverlappingCells(neighbors));
+        commands.entity(entity).insert(OverlappingCells(neighbors));
     }
 }
 
@@ -58,23 +67,24 @@ pub fn update(
     mut divide_event_writer: EventWriter<CellDivideEvent>,
     mut differentiate_event_writer: EventWriter<CellDifferentiateEvent>,
     sim_time: Res<SimulationTime>,
+    mut flow_events: EventWriter<HormoneFlowEvent>,
 ) {
-    // grow cells
-    for (_, mut transform, mut bio, mut info, overlapping_cells) in &mut cell_query {
-        let new_volume = bio.update_size(sim_time.elapsed);
-        bio.update_hormones(sim_time.delta_secs);
-        info.update(&overlapping_cells.0, new_volume);
+    // update cell volume and hormones
+    for (_, mut transform, mut cell, mut info, overlapping_cells) in &mut cell_query {
+        let new_volume = cell.update_size(sim_time.elapsed);
+        cell.simulate_hormones(sim_time.delta_secs, overlapping_cells, &mut flow_events);
+        info.update(overlapping_cells, new_volume);
         transform.translation = to_bevy_vec3(&info.position);
         transform.scale.x = info.radius;
         transform.scale.y = info.radius;
         transform.scale.z = info.radius;
     }
     // divide cells if they reach a threshold
-    for (entity, _, bio, info, _) in cell_query.iter() {
-        if let Ok(tissue) = tissue_query.get(bio.tissue()) {
+    for (entity, _, cell, _, _) in cell_query.iter() {
+        if let Ok(tissue) = tissue_query.get(cell.tissue()) {
             match tissue.kind {
                 TissueType::Meristem => {
-                    if volume_from_radius(info.radius) > tissue.config.max_cell_volume - 1. {
+                    if cell.auxin_level() > 0.8 {
                         divide_event_writer.write(CellDivideEvent { parent: entity });
                     }
                 }
@@ -83,17 +93,15 @@ pub fn update(
                 }
             }
         } else {
-            println!("Cannot find tissue with id {:?}", bio.tissue());
+            println!("Cannot find tissue with id {:?}", cell.tissue());
         };
     }
     // handle differentiation
-    for (entity, _, bio, _, _) in cell_query.iter() {
-        let tissue_type = &tissue_query.get(bio.tissue()).unwrap().kind;
+    for (entity, _, cell, _, _) in cell_query.iter() {
+        let tissue_type = &tissue_query.get(cell.tissue()).unwrap().kind;
         match tissue_type {
             TissueType::Meristem => {
-                let auxin = bio.auxin_level();
-                let cytokinin = bio.cytokinin_level();
-                if auxin > 0.8 && cytokinin < 0.2 {
+                if cell.auxin_level() < 0.2 {
                     differentiate_event_writer.write(CellDifferentiateEvent { cell: entity });
                 }
             }

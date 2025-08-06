@@ -1,7 +1,14 @@
-use bevy::ecs::{component::Component, entity::Entity};
-use std::f32::consts::E;
+use bevy::ecs::{component::Component, entity::Entity, event::EventWriter};
+use cgmath::BaseFloat;
+use std::{f32::consts::E, sync::Arc};
 
-use crate::model::{hormone::Phytohormones, tissue::TissueConfig};
+use crate::{
+    model::{
+        hormone::{HormoneFlowEvent, Phytohormones},
+        tissue::TissueConfig,
+    },
+    shared::{cell::CellInformation, overlapping_cells::OverlappingCells},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GrowthFactors {
@@ -10,7 +17,7 @@ pub struct GrowthFactors {
     size_threshold: f32,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Clone)]
 pub struct Cell {
     birth_time: f32,
     growth_factors: GrowthFactors,
@@ -42,10 +49,35 @@ impl Cell {
         cell
     }
 
-    pub fn update_hormones(&mut self, sim_delta_secs: f32) {
+    pub fn simulate_hormones(
+        &mut self,
+        sim_delta_secs: f32,
+        overlapping_cells: &OverlappingCells<f32>,
+        flow_events: &mut EventWriter<HormoneFlowEvent>,
+    ) {
+        // auxin production
         let random_factor = rand::random::<f32>() * self.tissue_config.auxin_production_rate;
         self.hormones.auxin_level +=
             (self.tissue_config.auxin_production_rate + random_factor) * sim_delta_secs;
+        // auxin diffusion
+        for (other_entity, _, other_hormones) in overlapping_cells.0.iter() {
+            let gradient = self.auxin_level() - other_hormones.auxin_level;
+            let flux = self.tissue_config.diffusion_factor * gradient; // TODO more flux the more they overlap
+            self.hormones.auxin_level -= flux;
+            flow_events.write(HormoneFlowEvent {
+                target_cell: *other_entity,
+                amount: Phytohormones {
+                    auxin_level: flux,
+                    cytokinin_level: 0.,
+                },
+            });
+        }
+        // active auxin transport
+    }
+
+    pub fn add_to_hormone_level(&mut self, delta: Phytohormones) {
+        self.hormones.auxin_level += delta.auxin_level;
+        self.hormones.cytokinin_level += delta.cytokinin_level;
     }
 
     pub fn update_size(&mut self, sim_time: f32) -> f32 {
@@ -66,6 +98,10 @@ impl Cell {
 
     pub fn update_tissue(&mut self, new_tissue: Entity) {
         self.tissue = new_tissue;
+    }
+
+    pub fn hormones(&self) -> &Phytohormones {
+        &self.hormones
     }
 
     pub fn auxin_level(&self) -> f32 {

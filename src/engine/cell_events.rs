@@ -22,7 +22,7 @@ use crate::{
     },
     model::{
         cell::Cell,
-        hormone::Phytohormones,
+        hormone::{HormoneFlowEvent, Phytohormones},
         organ::{Organ, OrganType},
         tissue::{Tissue, TissueType},
     },
@@ -244,5 +244,21 @@ pub fn handle_cell_differentiation_events(
         } else {
             println!("Cannot find cell with id {:?}", event.cell);
         }
+    }
+}
+
+pub fn handle_hormone_flow_events(
+    mut spawn_events: EventReader<HormoneFlowEvent>,
+    mut cell_query: Query<&mut Cell>,
+) {
+    for event in spawn_events.read() {
+        let mut cell = cell_query.get_mut(event.target_cell).expect(
+            format!(
+                "Can not find target cell of hormone flow: {:?}",
+                event.target_cell
+            )
+            .as_str(),
+        );
+        cell.add_to_hormone_level(event.amount);
     }
 }
