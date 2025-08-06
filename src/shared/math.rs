@@ -54,6 +54,10 @@ pub fn distance<T: BaseFloat + Sum>(point1: &Point3<T>, point2: &Point3<T>) -> T
     )
 }
 
+pub fn direction<T: BaseFloat + Sum>(point1: &Point3<T>, point2: &Point3<T>) -> Vector3<T> {
+    point2 - point1
+}
+
 pub fn signed_distance<T: BaseFloat>(point: &Point3<T>, plane: &Plane<T>) -> T {
     let dist = Vector3::<T> {
         x: point.x - plane.pos.x,
@@ -113,8 +117,12 @@ pub enum Line2PlaneClassification<T: BaseFloat> {
     Intersects(Vector3<T>),
 }
 
-pub fn to_bevy_vec3(point: &Point3<f32>) -> Vec3 {
+pub fn point_to_bevy_vec3(point: &Point3<f32>) -> Vec3 {
     Vec3::new(point.x, point.y, point.z)
+}
+
+pub fn vector3_to_bevy_vec3(vector: &Vector3<f32>) -> Vec3 {
+    Vec3::new(vector.x, vector.y, vector.z)
 }
 
 pub fn to_point3(vec: &Vec3) -> Point3<f32> {

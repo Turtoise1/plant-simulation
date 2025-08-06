@@ -14,7 +14,7 @@ use crate::{
     },
     shared::{
         cell::{overlap, CellInformation},
-        math::to_bevy_vec3,
+        math::point_to_bevy_vec3,
         overlapping_cells::OverlappingCells,
     },
 };
@@ -72,15 +72,20 @@ pub fn update(
     // update cell volume and hormones
     for (_, mut transform, mut cell, mut info, overlapping_cells) in &mut cell_query {
         let new_volume = cell.update_size(sim_time.elapsed);
-        cell.simulate_hormones(sim_time.delta_secs, overlapping_cells, &mut flow_events);
+        cell.simulate_hormones(
+            sim_time.delta_secs,
+            &info,
+            overlapping_cells,
+            &mut flow_events,
+        );
         info.update(overlapping_cells, new_volume);
-        transform.translation = to_bevy_vec3(&info.position);
+        transform.translation = point_to_bevy_vec3(&info.position);
         transform.scale.x = info.radius;
         transform.scale.y = info.radius;
         transform.scale.z = info.radius;
     }
     // divide cells if they reach a threshold
-    for (entity, _, cell, _, _) in cell_query.iter() {
+    for (entity, _, cell, _, _) in cell_query.iter_mut() {
         if let Ok(tissue) = tissue_query.get(cell.tissue()) {
             match tissue.kind {
                 TissueType::Meristem => {

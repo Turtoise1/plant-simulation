@@ -125,6 +125,13 @@ pub fn handle_cell_division_events(
             parent_cell.on_divide(new_volume, sim_time.elapsed);
             cell_info.radius = new_radius;
 
+            let auxin_flux = parent_cell.auxin_level() / 2.;
+            let cytokinin_flux = parent_cell.cytokinin_level() / 2.;
+            parent_cell.add_to_hormone_level(Phytohormones {
+                auxin_level: -auxin_flux,
+                cytokinin_level: -cytokinin_flux,
+            });
+
             let tissue = tissue_query.get(parent_cell.tissue()).unwrap();
             match &tissue.kind {
                 TissueType::Meristem => {
@@ -139,7 +146,10 @@ pub fn handle_cell_division_events(
                             position,
                             radius: new_radius,
                             tissue: parent_cell.tissue(),
-                            hormones: Phytohormones::new(),
+                            hormones: Phytohormones {
+                                auxin_level: auxin_flux,
+                                cytokinin_level: cytokinin_flux,
+                            },
                         });
                     } else {
                         println!("Cannot find growing config for meristem!");

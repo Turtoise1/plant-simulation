@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     engine::cell_events::CellSpawnEvent,
-    shared::{cell::CellInformation, math::to_bevy_vec3},
+    shared::{cell::CellInformation, math::point_to_bevy_vec3},
 };
 
 #[derive(Component, Debug)]
@@ -25,17 +25,7 @@ pub struct TissueConfig {
     pub auxin_production_rate: f32,
     pub growing_config: Option<GrowingConfig>,
     pub diffusion_factor: f32,
-}
-
-impl Default for TissueConfig {
-    fn default() -> Self {
-        TissueConfig {
-            max_cell_volume: 20.,
-            auxin_production_rate: 0.,
-            growing_config: None,
-            diffusion_factor: 0.0001,
-        }
-    }
+    pub active_transport_factor: f32,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -93,8 +83,8 @@ pub fn update_central_cells(
             let cell_refs_clone = tissue.cell_refs.clone();
             if let Some(growing_config) = &mut tissue.config.growing_config {
                 let central_cell = cell_refs_clone.iter().max_by(|&&a, &&b| {
-                    let pos_a = to_bevy_vec3(&cell_query.get(a).unwrap().position);
-                    let pos_b = to_bevy_vec3(&cell_query.get(b).unwrap().position);
+                    let pos_a = point_to_bevy_vec3(&cell_query.get(a).unwrap().position);
+                    let pos_b = point_to_bevy_vec3(&cell_query.get(b).unwrap().position);
                     growing_config
                         .growing_direction
                         .dot(pos_a)
