@@ -42,7 +42,7 @@ pub fn show_editor(contexts: &mut EguiContexts, state: &mut ResMut<ApplicationSt
             egui::Window::new("Editor").show(contexts.ctx_mut(), |ui| {
                 ui.vertical(|ui| {
                     ui.label("Time: ");
-                    ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=1000.));
+                    ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=120.));
                 });
             });
         }
