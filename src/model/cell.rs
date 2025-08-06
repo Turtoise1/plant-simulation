@@ -58,12 +58,13 @@ impl Cell {
     ) {
         // auxin production
         let random_factor = rand::random::<f32>() * self.tissue_config.auxin_production_rate;
-        self.hormones.auxin_level +=
+        let growing_sum =
             (self.tissue_config.auxin_production_rate + random_factor) * sim_delta_secs;
+        self.hormones.auxin_level += growing_sum * info.radius * sim_delta_secs;
         // auxin diffusion
         for (other_entity, _, other_hormones) in overlapping_cells.0.iter() {
             let gradient = self.auxin_level() - other_hormones.auxin_level;
-            let flux = self.tissue_config.diffusion_factor * gradient; // TODO more flux the more they overlap
+            let flux = self.tissue_config.diffusion_factor * gradient * sim_delta_secs; // TODO more flux the more they overlap
             self.hormones.auxin_level -= flux;
             flow_events.write(HormoneFlowEvent {
                 target_cell: *other_entity,
@@ -85,9 +86,9 @@ impl Cell {
                     .normalize()
                     .angle_between(other_cell_dir.normalize())
                     .to_degrees();
-                if angle_to_growing_direction < 45. {
+                if self.auxin_level() > 0.0 && angle_to_growing_direction < 45. {
                     let gradient = self.auxin_level() - other_hormones.auxin_level;
-                    let flux = self.tissue_config.active_transport_factor; // TODO more flux the more they overlap
+                    let flux = self.tissue_config.active_transport_factor * sim_delta_secs; // TODO more flux the more they overlap
                     self.hormones.auxin_level -= flux;
                     flow_events.write(HormoneFlowEvent {
                         target_cell: *other_entity,
