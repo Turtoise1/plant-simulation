@@ -54,6 +54,10 @@ impl PlantState {
         self.0.config.organs.get(organ_type)
     }
 
+    pub fn organ_config_mut(&mut self, organ_type: &OrganType) -> Option<&mut OrganConfig> {
+        self.0.config.organs.get_mut(organ_type)
+    }
+
     pub fn tissue_config(
         &self,
         organ_type: &OrganType,
@@ -61,6 +65,18 @@ impl PlantState {
     ) -> Option<&TissueConfig> {
         if let Some(organ) = self.organ_config(organ_type) {
             organ.tissues.get(tissue_type)
+        } else {
+            None
+        }
+    }
+
+    pub fn tissue_config_mut(
+        &mut self,
+        organ_type: &OrganType,
+        tissue_type: &TissueType,
+    ) -> Option<&mut TissueConfig> {
+        if let Some(organ) = self.organ_config_mut(organ_type) {
+            organ.tissues.get_mut(tissue_type)
         } else {
             None
         }
