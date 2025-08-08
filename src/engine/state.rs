@@ -46,8 +46,24 @@ pub struct RunningState {
 pub struct PlantState(Species);
 
 impl PlantState {
-    pub fn dirty(&self) -> bool {
-        *self.0.dirty.lock().unwrap()
+    pub fn name(&self) -> String {
+        self.0.id.to_string()
+    }
+
+    pub fn changed_from_ui(&self) -> bool {
+        self.0.changed_from_ui
+    }
+
+    pub fn set_changed_from_ui(&mut self, value: bool) {
+        self.0.changed_from_ui = value;
+    }
+
+    pub fn changed_from_file(&self) -> bool {
+        *self.0.changed_from_file.lock().unwrap()
+    }
+
+    pub fn set_changed_from_file(&mut self, value: bool) {
+        *self.0.changed_from_file.lock().unwrap() = value;
     }
 
     pub fn organ_config(&self, organ_type: &OrganType) -> Option<&OrganConfig> {
@@ -137,18 +153,24 @@ pub fn handle_tab_to_switch_modes(
 pub fn update_plant_state(
     mut plant_state: ResMut<PlantState>,
     organ_query: Query<(Entity, &Organ)>,
-    tissue_query: Query<(Entity, &Tissue)>,
+    mut tissue_query: Query<(Entity, &mut Tissue)>,
     cell_query: Query<&mut Cell>,
 ) {
-    if plant_state.dirty() == true {
-        plant_state.0.update_from_config();
+    if plant_state.changed_from_file() || plant_state.changed_from_ui() {
+        if plant_state.changed_from_file() {
+            plant_state.0.update_from_config_file();
+            plant_state.set_changed_from_file(false);
+        } else {
+            plant_state.set_changed_from_ui(false);
+        }
         for mut cell in cell_query {
-            for (tissue_entity, tissue) in tissue_query {
+            for (tissue_entity, mut tissue) in tissue_query.iter_mut() {
                 if cell.tissue() == tissue_entity {
                     for (organ_entity, organ) in organ_query {
                         if tissue.organ_ref == organ_entity {
                             let config = plant_state.tissue_config(&organ.kind, &tissue.kind);
                             if let Some(config) = config {
+                                tissue.config = config.clone();
                                 cell.update_tissue_config(config.clone());
                             }
                         }
@@ -160,7 +182,7 @@ pub fn update_plant_state(
 }
 
 pub fn setup_config_watcher(plant_state: Res<PlantState>) {
-    let dirty_clone = Arc::clone(&plant_state.0.dirty);
+    let dirty_clone = Arc::clone(&plant_state.0.changed_from_file);
     let mut watcher =
         notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {

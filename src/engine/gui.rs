@@ -56,73 +56,101 @@ pub fn show_application_state(contexts: &mut EguiContexts, state: &mut ResMut<Ap
 }
 
 pub fn show_plant_config(contexts: &mut EguiContexts, state: &mut ResMut<PlantState>) {
-    egui::Window::new("Plant config").show(contexts.ctx_mut(), |ui| {
-        let organs = vec![OrganType::Stem];
-        let tissues = vec![TissueType::Meristem, TissueType::Parenchyma];
-        for organ in organs.iter() {
-            for tissue in tissues.iter() {
-                if let Some(tissue_config) = state.tissue_config_mut(organ, tissue) {
-                    ui.heading(tissue.to_string());
-                    ui.vertical(|ui| {
-                        ui.label("Maximum cell volume: ");
-                        ui.add(egui::Slider::new(
-                            &mut tissue_config.max_cell_volume,
-                            1.0..=50.,
-                        ));
-                    });
-                    ui.vertical(|ui| {
-                        ui.label("Auxin production rate: ");
-                        ui.add(egui::Slider::new(
-                            &mut tissue_config.auxin_production_rate,
-                            0.0..=0.001,
-                        ));
-                    });
-                    ui.vertical(|ui| {
-                        ui.label("Active hormone transport: ");
-                        ui.add(egui::Slider::new(
-                            &mut tissue_config.active_transport_factor,
-                            0.0..=0.01,
-                        ));
-                    });
-                    ui.vertical(|ui| {
-                        ui.label("Diffusion rate: ");
-                        ui.add(egui::Slider::new(
-                            &mut tissue_config.diffusion_factor,
-                            0.0..=0.001,
-                        ));
-                    });
-                    if let Some(growing_tissue_config) = &mut tissue_config.growing_config {
+    egui::Window::new("Plant config (".to_owned() + state.name().as_str() + ")").show(
+        contexts.ctx_mut(),
+        |ui| {
+            let organs = vec![OrganType::Stem];
+            let tissues = vec![TissueType::Meristem, TissueType::Parenchyma];
+            let mut slider_value_changed = false;
+            for organ in organs.iter() {
+                for tissue in tissues.iter() {
+                    if let Some(tissue_config) = state.tissue_config_mut(organ, tissue) {
+                        ui.heading(tissue.to_string());
                         ui.vertical(|ui| {
-                            ui.label("Growing direction:");
-                            ui.horizontal(|ui| {
+                            ui.label("Maximum cell volume: ");
+                            let response = ui.add(egui::Slider::new(
+                                &mut tissue_config.max_cell_volume,
+                                1.0..=50.,
+                            ));
+                            if response.changed() {
+                                slider_value_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            ui.label("Auxin production rate: ");
+                            let response = ui.add(egui::Slider::new(
+                                &mut tissue_config.auxin_production_rate,
+                                0.0..=0.001,
+                            ));
+                            if response.changed() {
+                                slider_value_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            ui.label("Active hormone transport: ");
+                            let response = ui.add(egui::Slider::new(
+                                &mut tissue_config.active_transport_factor,
+                                0.0..=0.01,
+                            ));
+                            if response.changed() {
+                                slider_value_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            ui.label("Diffusion rate: ");
+                            let response = ui.add(egui::Slider::new(
+                                &mut tissue_config.diffusion_factor,
+                                0.0..=0.001,
+                            ));
+                            if response.changed() {
+                                slider_value_changed = true;
+                            }
+                        });
+                        if let Some(growing_tissue_config) = &mut tissue_config.growing_config {
+                            ui.vertical(|ui| {
+                                ui.label("Growing direction:");
                                 ui.horizontal(|ui| {
-                                    ui.label("x : ");
-                                    ui.add(egui::Slider::new(
-                                        &mut growing_tissue_config.growing_direction.x,
-                                        0.0..=6.,
-                                    ));
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label("y : ");
-                                    ui.add(egui::Slider::new(
-                                        &mut growing_tissue_config.growing_direction.y,
-                                        0.0..=6.,
-                                    ));
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label("z : ");
-                                    ui.add(egui::Slider::new(
-                                        &mut growing_tissue_config.growing_direction.z,
-                                        0.0..=6.,
-                                    ));
+                                    ui.horizontal(|ui| {
+                                        ui.label("x : ");
+                                        let response = ui.add(egui::Slider::new(
+                                            &mut growing_tissue_config.growing_direction.x,
+                                            0.0..=6.,
+                                        ));
+                                        if response.changed() {
+                                            slider_value_changed = true;
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("y : ");
+                                        let response = ui.add(egui::Slider::new(
+                                            &mut growing_tissue_config.growing_direction.y,
+                                            0.0..=6.,
+                                        ));
+                                        if response.changed() {
+                                            slider_value_changed = true;
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("z : ");
+                                        let response = ui.add(egui::Slider::new(
+                                            &mut growing_tissue_config.growing_direction.z,
+                                            0.0..=6.,
+                                        ));
+                                        if response.changed() {
+                                            slider_value_changed = true;
+                                        }
+                                    });
                                 });
                             });
-                        });
+                        }
                     }
                 }
+                if slider_value_changed {
+                    state.set_changed_from_ui(true);
+                }
             }
-        }
-    });
+        },
+    );
 }
 
 pub fn show_tissues(mut contexts: EguiContexts, tissue_query: Query<(&Tissue, &Selected)>) {

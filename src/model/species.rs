@@ -27,7 +27,8 @@ pub const EQUISETUM_ID: SpeciesId = SpeciesId("Equisetum arvense");
 #[derive(Debug)]
 pub struct Species {
     pub id: SpeciesId,
-    pub dirty: Arc<Mutex<bool>>,
+    pub changed_from_ui: bool,
+    pub changed_from_file: Arc<Mutex<bool>>,
     pub config: SpeciesConfig,
 }
 
@@ -35,12 +36,12 @@ impl PartialEq for Species {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
             && self.config == other.config
-            && *self.dirty.lock().unwrap() == *other.dirty.lock().unwrap()
+            && *self.changed_from_file.lock().unwrap() == *other.changed_from_file.lock().unwrap()
     }
 }
 
 impl Species {
-    pub fn update_from_config(&mut self) {
+    pub fn update_from_config_file(&mut self) {
         let mut path = "configs/species/".to_owned();
         path.push_str(self.id.to_string().as_str());
         path.push_str(".ron");
@@ -51,7 +52,6 @@ impl Species {
         )
         .expect("Failed to parse plant species");
         self.config = config;
-        *self.dirty.lock().unwrap() = false;
     }
 
     pub fn read_from_config(id: SpeciesId) -> Self {
@@ -67,7 +67,8 @@ impl Species {
         Self {
             id,
             config,
-            dirty: Arc::new(Mutex::new(false)),
+            changed_from_file: Arc::new(Mutex::new(false)),
+            changed_from_ui: false,
         }
     }
 }

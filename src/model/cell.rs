@@ -1,6 +1,5 @@
 use bevy::ecs::{component::Component, entity::Entity, event::EventWriter};
-use cgmath::BaseFloat;
-use std::{f32::consts::E, sync::Arc};
+use std::f32::consts::E;
 
 use crate::{
     model::{
