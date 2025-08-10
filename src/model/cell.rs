@@ -56,9 +56,7 @@ impl Cell {
         flow_events: &mut EventWriter<HormoneFlowEvent>,
     ) {
         // auxin production
-        let random_factor = rand::random::<f32>() * self.tissue_config.auxin_production_rate;
-        let growing_sum =
-            (self.tissue_config.auxin_production_rate + random_factor) * sim_delta_secs;
+        let growing_sum = self.tissue_config.auxin_production_rate * sim_delta_secs;
         self.hormones.auxin_level += growing_sum * info.radius * sim_delta_secs;
         // auxin diffusion
         for (other_entity, _, other_hormones) in overlapping_cells.0.iter() {
@@ -75,29 +73,35 @@ impl Cell {
         }
         // active auxin transport
         if let Some(growing_config) = &self.tissue_config.growing_config {
-            let dir = growing_config.growing_direction;
-            for (other_entity, other_info, other_hormones) in overlapping_cells.0.iter() {
-                let other_cell_dir = math::vector3_to_bevy_vec3(&math::direction(
-                    &info.position,
-                    &other_info.position,
-                ));
-                let angle_to_growing_direction = dir
-                    .normalize()
-                    .angle_between(other_cell_dir.normalize())
-                    .to_degrees();
-                if self.auxin_level() > 0.0 && angle_to_growing_direction < 45. {
-                    let gradient = self.auxin_level() - other_hormones.auxin_level;
-                    let flux = self.tissue_config.active_transport_factor * sim_delta_secs; // TODO more flux the more they overlap
-                    self.hormones.auxin_level -= flux;
-                    flow_events.write(HormoneFlowEvent {
-                        target_cell: *other_entity,
-                        amount: Phytohormones {
-                            auxin_level: flux,
-                            cytokinin_level: 0.,
-                        },
-                    });
+            if let Some((_, central_cell)) = &growing_config.central_cell {
+                let target_position = central_cell.position
+                    + math::bevy_vec3_to_vector3(&growing_config.growing_direction);
+                let target_direction =
+                    math::vector3_to_bevy_vec3(&math::direction(&info.position, &target_position));
+                for (other_entity, other_info, other_hormones) in overlapping_cells.0.iter() {
+                    let other_cell_dir = math::vector3_to_bevy_vec3(&math::direction(
+                        &info.position,
+                        &other_info.position,
+                    ));
+
+                    let deg_treshold = 30.;
+                    let angle = target_direction.angle_between(other_cell_dir).to_degrees();
+
+                    if self.auxin_level() > 0.0 && angle < deg_treshold {
+                        let distance = math::distance(&info.position, &target_position);
+                        let flux =
+                            self.tissue_config.active_transport_factor * sim_delta_secs * distance; // TODO more flux the more they overlap
+                        self.hormones.auxin_level -= flux;
+                        flow_events.write(HormoneFlowEvent {
+                            target_cell: *other_entity,
+                            amount: Phytohormones {
+                                auxin_level: flux,
+                                cytokinin_level: 0.,
+                            },
+                        });
+                    }
                 }
-            }
+            };
         }
     }
 
@@ -108,7 +112,6 @@ impl Cell {
 
     pub fn update_size(&mut self, sim_time: f32) -> f32 {
         let volume = logistic_growth(self.growth_factors)(sim_time - self.birth_time);
-
         volume
     }
 

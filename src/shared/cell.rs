@@ -1,12 +1,13 @@
 use bevy::prelude::*;
 use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 use std::{f32::EPSILON, fmt::Debug};
 
 use crate::shared::{math::add_small_random_to_one_direction, overlapping_cells::OverlappingCells};
 
 use super::math::{distance, mean, radius_from_volume};
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug, Component, Serialize, Deserialize, PartialEq)]
 pub struct CellInformation<T: BaseFloat> {
     pub position: Point3<T>,
     pub radius: T,

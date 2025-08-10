@@ -93,7 +93,7 @@ pub fn show_plant_config(contexts: &mut EguiContexts, state: &mut ResMut<PlantSt
                             ui.label("Active hormone transport: ");
                             let response = ui.add(egui::Slider::new(
                                 &mut tissue_config.active_transport_factor,
-                                0.0..=0.01,
+                                0.0..=0.001,
                             ));
                             if response.changed() {
                                 slider_value_changed = true;

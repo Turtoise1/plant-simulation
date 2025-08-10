@@ -54,6 +54,21 @@ pub fn distance<T: BaseFloat + Sum>(point1: &Point3<T>, point2: &Point3<T>) -> T
     )
 }
 
+pub fn angle_between_vector_and_line(
+    target_vector: Vec3,
+    line_point1: Vec3,
+    line_point2: Vec3,
+) -> f32 {
+    // Get the direction vector of the line
+    let line_direction = (line_point2 - line_point1).normalize();
+
+    // Get the angle between target vector and line direction
+    let dot_product = target_vector.normalize().dot(line_direction);
+    let angle = dot_product.abs().acos(); // abs() because line has no inherent direction
+
+    angle
+}
+
 pub fn direction<T: BaseFloat + Sum>(point1: &Point3<T>, point2: &Point3<T>) -> Vector3<T> {
     point2 - point1
 }
@@ -123,6 +138,10 @@ pub fn point_to_bevy_vec3(point: &Point3<f32>) -> Vec3 {
 
 pub fn vector3_to_bevy_vec3(vector: &Vector3<f32>) -> Vec3 {
     Vec3::new(vector.x, vector.y, vector.z)
+}
+
+pub fn bevy_vec3_to_vector3(vector: &Vec3) -> Vector3<f32> {
+    Vector3::new(vector.x, vector.y, vector.z)
 }
 
 pub fn to_point3(vec: &Vec3) -> Point3<f32> {

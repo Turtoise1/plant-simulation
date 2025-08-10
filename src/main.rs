@@ -18,7 +18,7 @@ use crate::{
         state::{self, ApplicationStateChanged, PlantState},
     },
     model::{
-        hormone::{self, HormoneFlowEvent, Phytohormones},
+        hormone::{HormoneFlowEvent, Phytohormones},
         organ::{Organ, OrganConfig, OrganType},
     },
 };
@@ -52,7 +52,7 @@ pub fn spawn_cells(
     );
     let meristem_entity = commands.spawn((meristem, Selected(false))).id();
     let mut hormones = Phytohormones::new();
-    hormones.auxin_level = 0.4;
+    hormones.auxin_level = 0.6;
     spawn_events.write(CellSpawnEvent {
         position: Point3::new(0.5, 0.0, 0.0),
         radius: 0.8,
@@ -127,7 +127,7 @@ fn main() {
         )
         .add_systems(
             PostUpdate,
-            (simulation::post_update, tissue::update_central_cells),
+            (simulation::post_update, tissue::update_central_cell),
         )
         .add_systems(EguiContextPass, gui::show_gui)
         .run();

@@ -1,13 +1,19 @@
 use std::fmt::Display;
 
 use bevy::{
-    ecs::{component::Component, entity::Entity, event::EventReader, system::Query},
+    ecs::{
+        component::Component,
+        entity::Entity,
+        event::EventReader,
+        system::{Query, ResMut},
+    },
     math::Vec3,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    engine::cell_events::CellSpawnEvent,
+    engine::{cell_events::CellSpawnEvent, state::PlantState},
+    model::organ::Organ,
     shared::{cell::CellInformation, math::point_to_bevy_vec3},
 };
 
@@ -31,7 +37,7 @@ pub struct TissueConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct GrowingConfig {
     pub growing_direction: Vec3,
-    pub central_cell: Option<Entity>,
+    pub central_cell: Option<(Entity, CellInformation<f32>)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize)]
@@ -71,17 +77,25 @@ impl GrowingConfig {
     }
 }
 
-pub fn update_central_cells(
+pub fn update_central_cell(
     mut spawn_events: EventReader<CellSpawnEvent>,
-    mut tissue_query: Query<&mut Tissue>,
+    mut plant_state: ResMut<PlantState>,
+    organ_query: Query<&Organ>,
+    tissue_query: Query<&Tissue>,
     cell_query: Query<&CellInformation<f32>>,
 ) {
     // run only if new cells were spawned
     if !spawn_events.is_empty() {
         spawn_events.clear();
-        for mut tissue in &mut tissue_query {
+        for tissue in tissue_query.iter() {
+            let organ = organ_query.get(tissue.organ_ref).unwrap();
+            // get tissue from plant state to update globally
+            let tissue_config = plant_state
+                .tissue_config_mut(&organ.kind, &tissue.kind)
+                .unwrap();
+
             let cell_refs_clone = tissue.cell_refs.clone();
-            if let Some(growing_config) = &mut tissue.config.growing_config {
+            if let Some(growing_config) = &mut tissue_config.growing_config {
                 let central_cell = cell_refs_clone.iter().max_by(|&&a, &&b| {
                     let pos_a = point_to_bevy_vec3(&cell_query.get(a).unwrap().position);
                     let pos_b = point_to_bevy_vec3(&cell_query.get(b).unwrap().position);
@@ -92,7 +106,11 @@ pub fn update_central_cells(
                         .unwrap()
                 });
                 if let Some(central_cell) = central_cell {
-                    growing_config.central_cell = Some(*central_cell);
+                    growing_config.central_cell = Some((
+                        *central_cell,
+                        cell_query.get(*central_cell).unwrap().clone(),
+                    ));
+                    plant_state.set_changed_from_ui(true);
                 }
             }
         }
