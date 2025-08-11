@@ -29,15 +29,21 @@ pub struct Tissue {
 pub struct TissueConfig {
     pub max_cell_volume: f32,
     pub auxin_production_rate: f32,
+    /// from this auxin level on, the auxin production is inhibited
+    pub auxin_inhibition_start: f32,
+    /// higher = faster inhibition
+    pub auxin_inhibition_slope: f32,
     pub growing_config: Option<GrowingConfig>,
     pub diffusion_factor: f32,
-    pub active_transport_factor: f32,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct GrowingConfig {
     pub growing_direction: Vec3,
     pub central_cell: Option<(Entity, CellInformation<f32>)>,
+    pub active_hormone_transport_rate: f32,
+    pub divide_min_auxin: f32,
+    pub divide_min_volume_percent: f32,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize)]
@@ -64,15 +70,6 @@ impl Tissue {
             organ_ref: organ,
             cell_refs: vec![],
             config,
-        }
-    }
-}
-
-impl GrowingConfig {
-    pub fn new(growing_direction: Vec3) -> Self {
-        Self {
-            growing_direction,
-            central_cell: None,
         }
     }
 }

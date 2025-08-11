@@ -1,5 +1,5 @@
 use bevy::ecs::{component::Component, entity::Entity, event::EventWriter};
-use std::f32::consts::E;
+use std::f32::{self, consts::E};
 
 use crate::{
     model::{
@@ -56,8 +56,20 @@ impl Cell {
         flow_events: &mut EventWriter<HormoneFlowEvent>,
     ) {
         // auxin production
-        let growing_sum = self.tissue_config.auxin_production_rate * sim_delta_secs;
-        self.hormones.auxin_level += growing_sum * info.radius * sim_delta_secs;
+        let production = self.tissue_config.auxin_production_rate;
+        if production > f32::EPSILON {
+            let inhibit_start = self.tissue_config.auxin_inhibition_start;
+            let inhibit_slope = self.tissue_config.auxin_inhibition_slope;
+            let inhibition_factor = if self.hormones.auxin_level <= inhibit_start {
+                1.0
+            } else {
+                (1.0 - (self.hormones.auxin_level - inhibit_start) * inhibit_slope).max(0.0)
+            };
+
+            self.hormones.auxin_level +=
+                production * inhibition_factor * info.radius * sim_delta_secs;
+        }
+
         // auxin diffusion
         for (other_entity, _, other_hormones) in overlapping_cells.0.iter() {
             let gradient = self.auxin_level() - other_hormones.auxin_level;
@@ -87,18 +99,20 @@ impl Cell {
                     let deg_treshold = 30.;
                     let angle = target_direction.angle_between(other_cell_dir).to_degrees();
 
-                    if self.auxin_level() > 0.0 && angle < deg_treshold {
+                    if angle < deg_treshold {
                         let distance = math::distance(&info.position, &target_position);
-                        let flux =
-                            self.tissue_config.active_transport_factor * sim_delta_secs * distance; // TODO more flux the more they overlap
-                        self.hormones.auxin_level -= flux;
-                        flow_events.write(HormoneFlowEvent {
-                            target_cell: *other_entity,
-                            amount: Phytohormones {
-                                auxin_level: flux,
-                                cytokinin_level: 0.,
-                            },
-                        });
+                        let rate = growing_config.active_hormone_transport_rate;
+                        let flux = rate * sim_delta_secs * distance; // TODO more flux the more they overlap
+                        if self.auxin_level() >= flux {
+                            self.hormones.auxin_level -= flux;
+                            flow_events.write(HormoneFlowEvent {
+                                target_cell: *other_entity,
+                                amount: Phytohormones {
+                                    auxin_level: flux,
+                                    cytokinin_level: 0.,
+                                },
+                            });
+                        }
                     }
                 }
             };

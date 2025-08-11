@@ -82,12 +82,21 @@ pub fn update(
         transform.scale.y = info.radius;
         transform.scale.z = info.radius;
     }
-    // divide cells if they reach a threshold
-    for (entity, _, cell, _, _) in cell_query.iter_mut() {
+    // divide cells
+    for (entity, _, cell, info, _) in cell_query.iter_mut() {
         if let Ok(tissue) = tissue_query.get(cell.tissue()) {
             match tissue.kind {
                 TissueType::Meristem => {
-                    if cell.auxin_level() > 0.8 {
+                    let growing_config = tissue
+                        .config
+                        .growing_config
+                        .as_ref()
+                        .expect("Meristem should have growing config!");
+                    if cell.auxin_level() > growing_config.divide_min_auxin
+                        && info.volume()
+                            > growing_config.divide_min_volume_percent / 100.
+                                * tissue.config.max_cell_volume
+                    {
                         divide_event_writer.write(CellDivideEvent { parent: entity });
                     }
                 }

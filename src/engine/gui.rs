@@ -50,7 +50,7 @@ pub fn show_application_state(contexts: &mut EguiContexts, state: &mut ResMut<Ap
                 .show(contexts.ctx_mut(), |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Speed: ");
-                        ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=120.));
+                        ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=1000.));
                     });
                 });
         }
@@ -80,24 +80,39 @@ pub fn show_plant_config(contexts: &mut EguiContexts, state: &mut ResMut<PlantSt
                             }
                         });
                         ui.horizontal(|ui| {
-                            ui.label("Auxin production rate: ");
-                            let response = ui.add(egui::Slider::new(
-                                &mut tissue_config.auxin_production_rate,
-                                0.0..=0.001,
-                            ));
-                            if response.changed() {
-                                slider_value_changed = true;
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Active hormone transport: ");
-                            let response = ui.add(egui::Slider::new(
-                                &mut tissue_config.active_transport_factor,
-                                0.0..=0.001,
-                            ));
-                            if response.changed() {
-                                slider_value_changed = true;
-                            }
+                            ui.label("Auxin:");
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label("Production rate: ");
+                                    let response = ui.add(egui::Slider::new(
+                                        &mut tissue_config.auxin_production_rate,
+                                        0.0..=0.001,
+                                    ));
+                                    if response.changed() {
+                                        slider_value_changed = true;
+                                    }
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("Inhibition start: ");
+                                    let response = ui.add(egui::Slider::new(
+                                        &mut tissue_config.auxin_inhibition_start,
+                                        0.0..=1.5,
+                                    ));
+                                    if response.changed() {
+                                        slider_value_changed = true;
+                                    }
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("Inhibition slope: ");
+                                    let response = ui.add(egui::Slider::new(
+                                        &mut tissue_config.auxin_inhibition_slope,
+                                        0.0..=1.0,
+                                    ));
+                                    if response.changed() {
+                                        slider_value_changed = true;
+                                    }
+                                });
+                            });
                         });
                         ui.horizontal(|ui| {
                             ui.label("Diffusion rate: ");
@@ -110,6 +125,41 @@ pub fn show_plant_config(contexts: &mut EguiContexts, state: &mut ResMut<PlantSt
                             }
                         });
                         if let Some(growing_tissue_config) = &mut tissue_config.growing_config {
+                            ui.horizontal(|ui| {
+                                ui.label("Active hormone transport rate: ");
+                                let response = ui.add(egui::Slider::new(
+                                    &mut growing_tissue_config.active_hormone_transport_rate,
+                                    0.0..=0.001,
+                                ));
+                                if response.changed() {
+                                    slider_value_changed = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Division:");
+                                ui.vertical(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label("Minimum auxin level: ");
+                                        let response = ui.add(egui::Slider::new(
+                                            &mut growing_tissue_config.divide_min_auxin,
+                                            0.0..=2.0,
+                                        ));
+                                        if response.changed() {
+                                            slider_value_changed = true;
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Minimum volume percent: ");
+                                        let response = ui.add(egui::Slider::new(
+                                            &mut growing_tissue_config.divide_min_volume_percent,
+                                            0.0..=100.0,
+                                        ));
+                                        if response.changed() {
+                                            slider_value_changed = true;
+                                        }
+                                    });
+                                });
+                            });
                             ui.horizontal(|ui| {
                                 ui.label("Growing direction:");
                                 ui.vertical(|ui| {

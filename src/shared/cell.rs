@@ -3,7 +3,10 @@ use cgmath::{BaseFloat, InnerSpace, Point3, Vector3};
 use serde::{Deserialize, Serialize};
 use std::{f32::EPSILON, fmt::Debug};
 
-use crate::shared::{math::add_small_random_to_one_direction, overlapping_cells::OverlappingCells};
+use crate::shared::{
+    math::{add_small_random_to_one_direction, volume_from_radius},
+    overlapping_cells::OverlappingCells,
+};
 
 use super::math::{distance, mean, radius_from_volume};
 
@@ -14,6 +17,10 @@ pub struct CellInformation<T: BaseFloat> {
 }
 
 impl<T: BaseFloat + std::iter::Sum> CellInformation<T> {
+    pub fn volume(&self) -> T {
+        volume_from_radius(self.radius)
+    }
+
     /// Updates self.radius according to the new volume and reposition itself according to near cells
     pub fn update(&mut self, overlapping_cells: &OverlappingCells<T>, new_volume: T) {
         self.radius = radius_from_volume(new_volume);
