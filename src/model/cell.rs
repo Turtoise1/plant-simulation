@@ -90,13 +90,13 @@ impl Cell {
                     + math::bevy_vec3_to_vector3(&growing_config.growing_direction);
                 let target_direction =
                     math::vector3_to_bevy_vec3(&math::direction(&info.position, &target_position));
-                for (other_entity, other_info, other_hormones) in overlapping_cells.0.iter() {
+                for (other_entity, other_info, _) in overlapping_cells.0.iter() {
                     let other_cell_dir = math::vector3_to_bevy_vec3(&math::direction(
                         &info.position,
                         &other_info.position,
                     ));
 
-                    let deg_treshold = 30.;
+                    let deg_treshold = 45.;
                     let angle = target_direction.angle_between(other_cell_dir).to_degrees();
 
                     if angle < deg_treshold {
