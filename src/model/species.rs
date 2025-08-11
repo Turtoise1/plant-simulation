@@ -22,7 +22,7 @@ pub struct SpeciesConfig {
     pub organs: HashMap<OrganType, OrganConfig>,
 }
 
-pub const EQUISETUM_ID: SpeciesId = SpeciesId("Equisetum arvense");
+pub const ARABIDOPSIS_ID: SpeciesId = SpeciesId("Arabidopsis thaliana");
 
 #[derive(Debug)]
 pub struct Species {

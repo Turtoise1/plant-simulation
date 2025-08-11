@@ -15,7 +15,7 @@ use notify::{RecursiveMode, Watcher};
 use crate::model::{
     cell::Cell,
     organ::{Organ, OrganConfig, OrganType},
-    species::{Species, EQUISETUM_ID},
+    species::{Species, ARABIDOPSIS_ID},
     tissue::{Tissue, TissueConfig, TissueType},
 };
 
@@ -101,7 +101,7 @@ impl PlantState {
 
 impl Default for PlantState {
     fn default() -> Self {
-        Self(Species::read_from_config(EQUISETUM_ID))
+        Self(Species::read_from_config(ARABIDOPSIS_ID))
     }
 }
 
