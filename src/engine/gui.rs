@@ -47,7 +47,7 @@ pub fn show_application_state(contexts: &mut EguiContexts, state: &mut ResMut<Ap
         ApplicationState::Running(running_state) => {
             egui::Window::new("Editor")
                 .anchor(Align2::LEFT_TOP, [5., 5.])
-                .show(contexts.ctx_mut(), |ui| {
+                .show(contexts.ctx_mut().unwrap(), |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Speed: ");
                         ui.add(egui::Slider::new(&mut running_state.speed, 0.1..=1000.));
@@ -61,7 +61,7 @@ pub fn show_plant_config(contexts: &mut EguiContexts, state: &mut ResMut<PlantSt
     egui::Window::new("Plant config (".to_owned() + state.name().as_str() + ")")
         .anchor(Align2::LEFT_BOTTOM, [5., -5.])
         .default_open(false)
-        .show(contexts.ctx_mut(), |ui| {
+        .show(contexts.ctx_mut().unwrap(), |ui| {
             let organs = vec![OrganType::Stem];
             let tissues = vec![TissueType::Meristem, TissueType::Parenchyma];
             let mut slider_value_changed = false;
@@ -208,7 +208,7 @@ pub fn show_plant_config(contexts: &mut EguiContexts, state: &mut ResMut<PlantSt
 pub fn show_tissues(mut contexts: EguiContexts, tissue_query: Query<(&Tissue, &Selected)>) {
     egui::Window::new("Tissues")
         .anchor(Align2::RIGHT_TOP, [-5., 5.])
-        .show(contexts.ctx_mut(), |ui| {
+        .show(contexts.ctx_mut().unwrap(), |ui| {
             ScrollArea::vertical().max_height(500.).show(ui, |ui| {
                 for (tissue, selected) in tissue_query.iter() {
                     let tissue_string = format!("{} ({})", tissue.kind, tissue.cell_refs.len());
@@ -228,7 +228,7 @@ pub fn show_cells(
 ) {
     egui::Window::new("Cells")
         .anchor(Align2::RIGHT_TOP, [-5.,5.])
-        .show(contexts.ctx_mut(), |ui| {
+        .show(contexts.ctx_mut().unwrap(), |ui| {
             ScrollArea::vertical().max_height(500.).show(ui, |ui|{
                 ui.vertical(|ui| {
                     for (cell, bio, selected) in cell_query.iter() {

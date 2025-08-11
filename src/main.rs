@@ -1,4 +1,4 @@
-use bevy_egui::{EguiContextPass, EguiPlugin};
+use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use cgmath::Point3;
 use engine::{
@@ -85,9 +85,7 @@ fn main() {
             DefaultPlugins,
             PanOrbitCameraPlugin,
             MeshPickingPlugin,
-            EguiPlugin {
-                enable_multipass_for_primary_context: true,
-            },
+            EguiPlugin::default(),
         ))
         .add_plugins(ApplicationStatePlugin)
         .add_event::<ApplicationStateChanged>()
@@ -129,6 +127,6 @@ fn main() {
             PostUpdate,
             (simulation::post_update, tissue::update_central_cell),
         )
-        .add_systems(EguiContextPass, gui::show_gui)
+        .add_systems(EguiPrimaryContextPass, gui::show_gui)
         .run();
 }
